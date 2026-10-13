@@ -1,5 +1,4 @@
 import java.awt.Color;
-import java.awt.Point;
 import java.awt.image.BufferedImage;
 import java.awt.event.MouseEvent;
 import java.lang.reflect.Field;
@@ -89,10 +88,9 @@ public class GameplayTest {
                 game.paint(image.getGraphics());
                 check(image.getRGB(400, 400) != gold, "Picked-up loot still visible");
                 World world = (World)field(game, "world");
-                Point originalLoot = world.getLoot().get(0);
                 BufferedImage map = new BufferedImage(world.getWidth(), world.getHeight(), BufferedImage.TYPE_INT_RGB);
                 world.draw(map.createGraphics(), 0, 0, world.getWidth(), world.getHeight());
-                check(map.getRGB(originalLoot.x, originalLoot.y) != gold, "Local map duplicates server loot");
+                check(map.getRGB(400, 400) != gold, "Local map duplicates server loot");
                 game.onText("WELCOME|1");
                 game.onText("STATE|1|1,480,320,100,60,0,HEAVY,100,0,PISTOL||");
                 Input input = (Input)field(game, "input");
@@ -151,7 +149,7 @@ public class GameplayTest {
                 target.health = 25;
                 synchronized (world.getLoot()) {
                     world.getLoot().clear();
-                    world.getLoot().add(new Point(60, 60));
+                    world.getLoot().add(new Loot(60, 60, LootType.AMMO));
                 }
                 bullets.add(new Bullet(9000, observerId, 140, 60, 0, 0));
                 Method update = GameServer.class.getDeclaredMethod("update", long.class);
@@ -159,9 +157,27 @@ public class GameplayTest {
                 update.invoke(server, System.currentTimeMillis());
                 check(!players.containsKey(victimId), "Dead body remains on server");
                 check(shooter.loot == 1 && shooter.ammo == 65, "Pickup reward");
-                check(!world.getLoot().contains(new Point(60, 60)), "Picked-up loot remains");
+                check(!world.getLoot().contains(new Loot(60, 60, LootType.AMMO)), "Picked-up loot remains");
             }
+            check(first.await("EVENT|LOOT_COLLECTED|").equals("EVENT|LOOT_COLLECTED|5"), "Loot observer notification");
+            check(second.await("EVENT|DAMAGED|").equals("EVENT|DAMAGED|25"), "Damage observer notification");
+            second.await("EVENT|DIED|0");
             second.await("DIED");
+            synchronized (server) {
+                Player shooter = players.get(observerId);
+                shooter.health = 90;
+                world.getLoot().add(new Loot(60, 60, LootType.HEALTH));
+                first.queue.clear();
+                Method broadcast = GameServer.class.getDeclaredMethod("broadcastState");
+                broadcast.setAccessible(true);
+                broadcast.invoke(server);
+                Method collect = GameServer.class.getDeclaredMethod("collectLoot", Player.class);
+                collect.setAccessible(true);
+                collect.invoke(server, shooter);
+                check(shooter.health == 100 && shooter.ammo == 65 && shooter.loot == 2, "Network health reward");
+            }
+            check(first.await("STATE|").contains("60,60,HEALTH"), "Loot type missing from state");
+            check(first.await("EVENT|HEALTH_COLLECTED|").equals("EVENT|HEALTH_COLLECTED|10"), "Health observer notification");
             first.queue.clear();
             String state = first.await("STATE|");
             check(!hasPlayer(state, victimId), "Dead body broadcast to other client");

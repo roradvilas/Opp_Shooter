@@ -12,10 +12,12 @@ public class Game extends JPanel implements Runnable, WebSocketClient.Listener {
     private static final int SERVER_PORT = 8080;
 
     private final Input input = new Input();
-    private final World world = new World();
+    private volatile World world = new WorldBuilder().build();
+    private volatile String notification = "";
+    private volatile long notificationUntil;
     private volatile Map<Integer, RemotePlayer> players = Map.of();
     private volatile Map<Long, Point> bullets = Map.of();
-    private volatile java.util.List<Point> loot = java.util.List.of();
+    private volatile java.util.List<Loot> loot = java.util.List.of();
     private final JPanel spawnScreen = new JPanel(null) {
         @Override protected void paintComponent(Graphics g) {
             g.setColor(new Color(0, 0, 0, 210));
@@ -145,11 +147,13 @@ public class Game extends JPanel implements Runnable, WebSocketClient.Listener {
 
         if (parts[0].equals("WELCOME")) {
             myId = Integer.parseInt(parts[1]);
+            if (parts.length >= 3) world = new WorldBuilder().seed(Long.parseLong(parts[2])).build();
             connectionStatus = "Connected";
             SwingUtilities.invokeLater(() -> spawnButton.setEnabled(true));
             return;
         }
         if (parts[0].equals("SPAWNED")) {
+            notification = "";
             alive = true;
             spawnPending = false;
             SwingUtilities.invokeLater(() -> {
@@ -173,6 +177,14 @@ public class Game extends JPanel implements Runnable, WebSocketClient.Listener {
                 spawnButton.setEnabled(true);
                 spawnScreen.setVisible(true);
             });
+            return;
+        }
+
+        if (parts[0].equals("EVENT") && parts.length == 3) {
+            PlayerEvent event = new PlayerEvent(myId, PlayerEvent.Type.valueOf(parts[1]),
+                    Integer.parseInt(parts[2]));
+            notification = event.message();
+            notificationUntil = System.currentTimeMillis() + 3000;
             return;
         }
 
@@ -207,11 +219,12 @@ public class Game extends JPanel implements Runnable, WebSocketClient.Listener {
         }
 
         bullets = Map.copyOf(nextBullets);
-        java.util.List<Point> nextLoot = new ArrayList<>();
+        java.util.List<Loot> nextLoot = new ArrayList<>();
         if (!parts[4].isEmpty()) {
             for (String row : parts[4].split(";")) {
                 String[] p = row.split(",");
-                if (p.length >= 2) nextLoot.add(new Point(Integer.parseInt(p[0]), Integer.parseInt(p[1])));
+                if (p.length >= 2) nextLoot.add(new Loot(Integer.parseInt(p[0]), Integer.parseInt(p[1]),
+                        p.length >= 3 ? LootType.valueOf(p[2]) : LootType.AMMO));
             }
         }
         loot = java.util.List.copyOf(nextLoot);
@@ -242,9 +255,19 @@ public class Game extends JPanel implements Runnable, WebSocketClient.Listener {
 
         world.draw(g, cameraX, cameraY, SCREEN_WIDTH, SCREEN_HEIGHT);
 
-        g.setColor(new Color(240,190,60));
-        for (Point p : loot)
-            g.fillRect(p.x - cameraX - 7, p.y - cameraY - 7, 14, 14);
+        for (Loot p : loot) {
+            int sx = p.x() - cameraX, sy = p.y() - cameraY;
+            if (p.type() == LootType.AMMO) {
+                g.setColor(new Color(240, 190, 60));
+                g.fillRect(sx - 7, sy - 7, 14, 14);
+            } else {
+                g.setColor(new Color(65, 200, 100));
+                g.fillRect(sx - 8, sy - 8, 16, 16);
+                g.setColor(Color.WHITE);
+                g.fillRect(sx - 2, sy - 6, 4, 12);
+                g.fillRect(sx - 6, sy - 2, 12, 4);
+            }
+        }
 
         g.setColor(Color.YELLOW);
         for (Point p : bullets.values())
@@ -298,6 +321,12 @@ public class Game extends JPanel implements Runnable, WebSocketClient.Listener {
         g.setFont(new Font("Arial", Font.PLAIN, 13));
         g.drawString(connectionStatus, 700, 30);
         g.drawString("WASD move | Mouse shoot", 700, 48);
+        g.drawString("Loot every 5s: gold = ammo, cross = health", 700, 66);
+        if (System.currentTimeMillis() < notificationUntil) {
+            g.setColor(new Color(240, 190, 60));
+            g.setFont(new Font("Arial", Font.BOLD, 16));
+            g.drawString(notification, 30, 180);
+        }
 
     }
 

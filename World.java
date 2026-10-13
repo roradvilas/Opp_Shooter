@@ -3,41 +3,59 @@ import java.util.*;
 
 public class World {
     public static final int TILE = 40;
-    private final int width = 60;
-    private final int height = 40;
-    private final boolean[][] walls = new boolean[height][width];
-    private final ArrayList<Point> loot = new ArrayList<>();
+    public static final int LOOT_EXCLUSION_RADIUS = 2 * TILE;
+    private final int width;
+    private final int height;
+    private final boolean[][] walls;
+    private final ArrayList<Loot> loot;
+    private final long seed;
 
-    public World() { generate(); }
+    public World() { this(new WorldBuilder().build()); }
 
-    private void generate() {
-        Random random = new Random(7); // same deterministic map on every client/server
+    private World(World generated) {
+        this(generated.width, generated.height, generated.walls, generated.loot, generated.seed);
+    }
 
-        for (int y = 0; y < height; y++)
-            for (int x = 0; x < width; x++)
-                walls[y][x] = x == 0 || y == 0 || x == width - 1 || y == height - 1;
+    World(int width, int height, boolean[][] walls, ArrayList<Loot> loot, long seed) {
+        this.width = width;
+        this.height = height;
+        this.walls = walls;
+        this.loot = loot;
+        this.seed = seed;
+    }
 
-        for (int i = 0; i < 55; i++) {
-            int x = 2 + random.nextInt(width - 5);
-            int y = 2 + random.nextInt(height - 5);
-            int w = 1 + random.nextInt(4);
-            int h = 1 + random.nextInt(3);
-            for (int yy = y; yy < Math.min(height - 1, y + h); yy++)
-                for (int xx = x; xx < Math.min(width - 1, x + w); xx++)
-                    walls[yy][xx] = true;
-        }
+    public long getSeed() { return seed; }
+    public int getWidth() { return width * TILE; }
+    public int getHeight() { return height * TILE; }
+    public ArrayList<Loot> getLoot() { return loot; }
 
-        for (int i = 0; i < 35; i++) {
-            int x = 2 + random.nextInt(width - 4);
-            int y = 2 + random.nextInt(height - 4);
-            if (!walls[y][x])
-                loot.add(new Point(x * TILE + TILE / 2, y * TILE + TILE / 2));
+    /** Places one pickup outside every existing pickup's two-tile radius. */
+    public boolean spawnLoot(Random random) {
+        synchronized (loot) {
+            ArrayList<Point> available = new ArrayList<>();
+            for (int y = 1; y < height - 1; y++) {
+                for (int x = 1; x < width - 1; x++) {
+                    Point position = new Point(x * TILE + TILE / 2, y * TILE + TILE / 2);
+                    if (!collidesWithWall(position.x, position.y, 16)
+                            && hasLootClearance(position.x, position.y, loot))
+                        available.add(position);
+                }
+            }
+            if (available.isEmpty()) return false;
+            Point position = available.get(random.nextInt(available.size()));
+            LootType type = random.nextBoolean() ? LootType.AMMO : LootType.HEALTH;
+            loot.add(new Loot(position.x, position.y, type));
+            return true;
         }
     }
 
-    public int getWidth() { return width * TILE; }
-    public int getHeight() { return height * TILE; }
-    public ArrayList<Point> getLoot() { return loot; }
+    static boolean hasLootClearance(int x, int y, java.util.List<Loot> existingLoot) {
+        for (Loot pickup : existingLoot) {
+            double dx = (double)x - pickup.x(), dy = (double)y - pickup.y();
+            if (dx * dx + dy * dy <= LOOT_EXCLUSION_RADIUS * LOOT_EXCLUSION_RADIUS) return false;
+        }
+        return true;
+    }
 
     public boolean isWall(int pixelX, int pixelY) {
         int tx = Math.floorDiv(pixelX, TILE), ty = Math.floorDiv(pixelY, TILE);

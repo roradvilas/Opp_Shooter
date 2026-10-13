@@ -1,4 +1,3 @@
-import java.awt.Point;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -7,13 +6,15 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class GameServer {
     private final int port;
-    private final World world = new World();
+    private final World world = new WorldBuilder().build();
     private final Map<Integer, Client> clients = new ConcurrentHashMap<>();
     private final Map<Integer, Player> players = new ConcurrentHashMap<>();
     private final List<Bullet> bullets = Collections.synchronizedList(new ArrayList<>());
     private final Random random = new Random();
     private int nextPlayerId = 1;
     private long nextBulletId = 1;
+    private static final long LOOT_SPAWN_INTERVAL = 5000;
+    private long nextLootSpawnAt = -1;
 
     public GameServer(int port) { this.port = port; }
 
@@ -30,7 +31,7 @@ public class GameServer {
                     int id = nextPlayerId++;
                     Client client = new Client(id, ws);
                     clients.put(id, client);
-                    client.send("WELCOME|" + id);
+                    client.send("WELCOME|" + id + "|" + world.getSeed());
                     new Thread(client, "player-" + id).start();
 
                     Logger.getInstance().log("Player " + id + " connected.");
@@ -71,6 +72,11 @@ public class GameServer {
     }
 
     private synchronized void update(long now) {
+        if (nextLootSpawnAt < 0) nextLootSpawnAt = now + LOOT_SPAWN_INTERVAL;
+        if (now >= nextLootSpawnAt) {
+            world.spawnLoot(random);
+            nextLootSpawnAt = now + LOOT_SPAWN_INTERVAL;
+        }
         for (Client c : clients.values()) {
             Player p = players.get(c.id);
             if (p == null || p.health <= 0) continue;
@@ -98,7 +104,6 @@ public class GameServer {
                         b.alive = false;
                         if (p.health == 0) {
                             players.remove(p.id);
-                            synchronized (world.getLoot()) { world.getLoot().add(new Point((int)p.x, (int)p.y)); }
                             Client victim = clients.get(p.id);
                             if (victim != null) {
                                 victim.w = victim.s = victim.a = victim.d = victim.shoot = false;
@@ -117,11 +122,9 @@ public class GameServer {
     private void collectLoot(Player p) {
         synchronized (world.getLoot()) {
             for (int i = world.getLoot().size() - 1; i >= 0; i--) {
-                Point q = world.getLoot().get(i);
-                if (Math.hypot(p.x - q.x, p.y - q.y) < 28) {
+                Loot q = world.getLoot().get(i);
+                if (Math.hypot(p.x - q.x(), p.y - q.y()) < 28 && p.collectLoot(q.type())) {
                     world.getLoot().remove(i);
-                    p.loot++;
-                    p.ammo += 5;
                 }
             }
         }
@@ -154,10 +157,10 @@ public class GameServer {
         s.append("|");
         first = true;
         synchronized (world.getLoot()) {
-            for (Point p : world.getLoot()) {
+            for (Loot p : world.getLoot()) {
                 if (!first) s.append(';');
                 first = false;
-                s.append(p.x).append(',').append(p.y);
+                s.append(p.x()).append(',').append(p.y()).append(',').append(p.type().name());
             }
         }
 
@@ -188,6 +191,7 @@ public class GameServer {
             } catch (IllegalArgumentException e) { return; }
             Player player = spawnPlayer(client.id, type);
             player.setWeapon(weapon);
+            player.addObserver(client);
             client.w = client.s = client.a = client.d = client.shoot = false;
             client.mouseWorldX = player.x + 100;
             client.mouseWorldY = player.y;
@@ -198,7 +202,7 @@ public class GameServer {
         }
     }
 
-    private class Client implements Runnable {
+    private class Client implements Runnable, PlayerObserver {
         final int id;
         final WebSocketServer ws;
         volatile boolean w, s, a, d, shoot;
@@ -209,6 +213,11 @@ public class GameServer {
         }
 
         void send(String text) throws IOException { ws.sendText(text); }
+
+        @Override public void onPlayerEvent(PlayerEvent event) {
+            try { send("EVENT|" + event.type().name() + "|" + event.amount()); }
+            catch (IOException e) { disconnect(id); }
+        }
 
         @Override public void run() {
             try {

@@ -1,4 +1,6 @@
 import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.LongSupplier;
 
 public class Player {
@@ -13,6 +15,15 @@ public class Player {
     double angle;
     WeaponType weaponType = WeaponType.ASSAULT_RIFLE;
     private WeaponStrategy weapon = weaponType.createStrategy();
+    private final List<PlayerObserver> observers = new CopyOnWriteArrayList<>();
+
+    public void addObserver(PlayerObserver observer) { observers.add(Objects.requireNonNull(observer)); }
+    public void removeObserver(PlayerObserver observer) { observers.remove(observer); }
+
+    private void notifyObservers(PlayerEvent.Type type, int amount) {
+        PlayerEvent event = new PlayerEvent(id, type, amount);
+        for (PlayerObserver observer : observers) observer.onPlayerEvent(event);
+    }
 
     public Player(int id, double x, double y) {
         this(id, x, y, PlayerType.HEAVY, 100, 3.2);
@@ -65,8 +76,30 @@ public class Player {
         List<Bullet> shot = weapon.fire(this, angle, bulletIds);
         lastShot = now;
         ammo -= shot.size();
+        if (ammo == 0) notifyObservers(PlayerEvent.Type.AMMO_EMPTY, 0);
         return shot;
     }
 
-    public void damage(int amount) { health = Math.max(0, health - amount); }
+    public boolean collectLoot(LootType type) {
+        Objects.requireNonNull(type);
+        if (health <= 0 || (type == LootType.HEALTH && health == maxHealth)) return false;
+        loot++;
+        if (type == LootType.AMMO) {
+            ammo += type.amount();
+            notifyObservers(PlayerEvent.Type.LOOT_COLLECTED, type.amount());
+        } else {
+            int restored = Math.min(type.amount(), maxHealth - health);
+            health += restored;
+            notifyObservers(PlayerEvent.Type.HEALTH_COLLECTED, restored);
+        }
+        return true;
+    }
+
+    public void damage(int amount) {
+        if (amount <= 0 || health <= 0) return;
+        int previous = health;
+        health = Math.max(0, health - amount);
+        notifyObservers(PlayerEvent.Type.DAMAGED, previous - health);
+        if (health == 0) notifyObservers(PlayerEvent.Type.DIED, 0);
+    }
 }
