@@ -23,7 +23,7 @@ public class PlayerFactoryTest {
                     "Factory returned wrong class");
             check(player.health == (type == PlayerType.HEAVY ? 100 : 80), "Health");
             near(player.speed, type == PlayerType.HEAVY ? 3.2 : 3.84);
-            check(player.ammo == 60 && player.radius == 16 && player.shootDelay == 130, "Shared stats");
+            check(player.ammo == 60 && player.radius == 16 && player.weaponType == WeaponType.ASSAULT_RIFLE, "Shared stats");
             player.move(false, false, false, true, open);
             near(player.x - 100, player.speed);
             player.x = player.y = 100;

@@ -1,12 +1,14 @@
 import java.awt.event.*;
-import java.util.HashSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Set;
 
 public class Input implements KeyListener, MouseListener, MouseMotionListener {
-    private final Set<Integer> keys = new HashSet<>();
-    private boolean mouseDown;
-    private int mouseX;
-    private int mouseY;
+    private final Set<Integer> keys = ConcurrentHashMap.newKeySet();
+    private volatile boolean mouseDown;
+    private volatile int mouseX;
+    private volatile int mouseY;
+
+    public void reset() { keys.clear(); mouseDown = false; }
 
     public boolean isKeyDown(int key) { return keys.contains(key); }
     public boolean isMouseDown() { return mouseDown; }

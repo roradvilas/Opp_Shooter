@@ -30,6 +30,7 @@ public class GameServer {
                     int id = nextPlayerId++;
                     Client client = new Client(id, ws);
                     clients.put(id, client);
+                    client.send("WELCOME|" + id);
                     new Thread(client, "player-" + id).start();
 
                     Logger.getInstance().log("Player " + id + " connected.");
@@ -69,16 +70,16 @@ public class GameServer {
         }
     }
 
-    private void update(long now) {
+    private synchronized void update(long now) {
         for (Client c : clients.values()) {
             Player p = players.get(c.id);
             if (p == null || p.health <= 0) continue;
 
             p.move(c.w, c.s, c.a, c.d, world);
+            p.aim(c.mouseWorldX, c.mouseWorldY);
 
             if (c.shoot && p.canShoot(now)) {
-                Bullet b = p.shoot(nextBulletId++, c.mouseWorldX, c.mouseWorldY, now);
-                if (b != null) bullets.add(b);
+                bullets.addAll(p.shoot(() -> nextBulletId++, c.mouseWorldX, c.mouseWorldY, now));
             }
 
             collectLoot(p);
@@ -96,7 +97,14 @@ public class GameServer {
                         p.damage(b.damage);
                         b.alive = false;
                         if (p.health == 0) {
+                            players.remove(p.id);
                             synchronized (world.getLoot()) { world.getLoot().add(new Point((int)p.x, (int)p.y)); }
+                            Client victim = clients.get(p.id);
+                            if (victim != null) {
+                                victim.w = victim.s = victim.a = victim.d = victim.shoot = false;
+                                try { victim.send("DIED"); }
+                                catch (IOException e) { disconnect(p.id); }
+                            }
                         }
                         break;
                     }
@@ -119,7 +127,7 @@ public class GameServer {
         }
     }
 
-    private void broadcastState() {
+    private synchronized void broadcastState() {
         StringBuilder s = new StringBuilder("STATE|").append(nextPlayerId - 1).append("|");
         boolean first = true;
         for (Player p : players.values()) {
@@ -128,7 +136,8 @@ public class GameServer {
             s.append(p.id).append(',').append(Math.round(p.x)).append(',')
              .append(Math.round(p.y)).append(',').append(p.health).append(',')
              .append(p.ammo).append(',').append(p.loot).append(',')
-             .append(p.type.name()).append(',').append(p.maxHealth);
+             .append(p.type.name()).append(',').append(p.maxHealth).append(',')
+             .append(p.angle).append(',').append(p.weaponType.name());
         }
 
         s.append("|");
@@ -159,11 +168,34 @@ public class GameServer {
         }
     }
 
-    private void disconnect(int id) {
+    private synchronized void disconnect(int id) {
         Client c = clients.remove(id);
         players.remove(id);
         if (c != null) try { c.ws.close(); } catch (Exception ignored) {}
         Logger.getInstance().log("Player " + id + " disconnected.");
+    }
+
+    private synchronized void handleMessage(Client client, String msg) throws IOException {
+        if (!clients.containsKey(client.id)) return;
+        String[] parts = msg.split("\\|", -1);
+        if (parts[0].equals("SPAWN") || parts[0].equals("JOIN")) {
+            if (players.containsKey(client.id) || (parts.length != 2 && parts.length != 3)) return;
+            PlayerType type;
+            WeaponType weapon;
+            try {
+                type = PlayerType.valueOf(parts[1]);
+                weapon = parts.length == 3 ? WeaponType.valueOf(parts[2]) : WeaponType.ASSAULT_RIFLE;
+            } catch (IllegalArgumentException e) { return; }
+            Player player = spawnPlayer(client.id, type);
+            player.setWeapon(weapon);
+            client.w = client.s = client.a = client.d = client.shoot = false;
+            client.mouseWorldX = player.x + 100;
+            client.mouseWorldY = player.y;
+            players.put(client.id, player);
+            client.send("SPAWNED");
+        } else if (players.containsKey(client.id)) {
+            client.parseInput(msg);
+        }
     }
 
     private class Client implements Runnable {
@@ -183,17 +215,7 @@ public class GameServer {
                 while (true) {
                     String msg = ws.readText();
                     if (msg == null) break;
-                    if (!players.containsKey(id)) {
-                        String[] join = msg.split("\\|", -1);
-                        if (join.length != 2 || !join[0].equals("JOIN")) continue;
-                        PlayerType type;
-                        try { type = PlayerType.valueOf(join[1]); }
-                        catch (IllegalArgumentException e) { continue; }
-                        players.put(id, spawnPlayer(id, type));
-                        send("WELCOME|" + id);
-                    } else {
-                        parseInput(msg);
-                    }
+                    handleMessage(this, msg);
                 }
             } catch (Exception ignored) {
             } finally {
@@ -208,8 +230,11 @@ public class GameServer {
             a = p[3].equals("1"); d = p[4].equals("1");
             shoot = p[5].equals("1");
             try {
-                mouseWorldX = Double.parseDouble(p[6]);
-                mouseWorldY = Double.parseDouble(p[7]);
+                double x = Double.parseDouble(p[6]), y = Double.parseDouble(p[7]);
+                if (Double.isFinite(x) && Double.isFinite(y)) {
+                    mouseWorldX = x;
+                    mouseWorldY = y;
+                }
             } catch (NumberFormatException ignored) {}
         }
     }

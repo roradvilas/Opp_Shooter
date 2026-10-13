@@ -1,3 +1,6 @@
+import java.util.List;
+import java.util.function.LongSupplier;
+
 public class Player {
     final int id;
     double x, y;
@@ -7,7 +10,9 @@ public class Player {
     final double speed;
     int health, ammo = 60, loot = 0;
     long lastShot = 0;
-    int shootDelay = 130;
+    double angle;
+    WeaponType weaponType = WeaponType.ASSAULT_RIFLE;
+    private WeaponStrategy weapon = weaponType.createStrategy();
 
     public Player(int id, double x, double y) {
         this(id, x, y, PlayerType.HEAVY, 100, 3.2);
@@ -41,17 +46,26 @@ public class Player {
     }
 
     public boolean canShoot(long now) {
-        return ammo > 0 && now - lastShot >= shootDelay && health > 0;
+        return ammo >= weapon.bulletCount() && now - lastShot >= weapon.shootingDelay() && health > 0;
     }
 
-    public Bullet shoot(long bulletId, double targetX, double targetY, long now) {
+    public void setWeapon(WeaponType type) {
+        weaponType = type;
+        weapon = type.createStrategy();
+    }
+
+    public void aim(double targetX, double targetY) {
+        if (targetX != x || targetY != y) angle = Math.atan2(targetY - y, targetX - x);
+    }
+
+    public List<Bullet> shoot(LongSupplier bulletIds, double targetX, double targetY, long now) {
         double dx = targetX - x, dy = targetY - y;
-        double len = Math.hypot(dx, dy);
-        if (len == 0) return null;
+        if (!canShoot(now) || (dx == 0 && dy == 0)) return List.of();
+        aim(targetX, targetY);
+        List<Bullet> shot = weapon.fire(this, angle, bulletIds);
         lastShot = now;
-        ammo--;
-        dx /= len; dy /= len;
-        return new Bullet(bulletId, id, x + dx * 20, y + dy * 20, dx * 9, dy * 9);
+        ammo -= shot.size();
+        return shot;
     }
 
     public void damage(int amount) { health = Math.max(0, health - amount); }

@@ -71,10 +71,5 @@ public class World {
             }
         }
 
-        g.setColor(new Color(240,190,60));
-        for (Point p : loot) {
-            int sx = p.x - cameraX, sy = p.y - cameraY;
-            g.fillRect(sx - 7, sy - 7, 14, 14);
-        }
     }
 }

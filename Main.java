@@ -1,14 +1,14 @@
 import javax.swing.JFrame;
-import javax.swing.JOptionPane;
+import javax.swing.SwingUtilities;
 
 public class Main {
     public static void main(String[] args) {
-        PlayerType type = (PlayerType)JOptionPane.showInputDialog(null,
-                "Choose your player type", "Player selection", JOptionPane.QUESTION_MESSAGE,
-                null, PlayerType.values(), PlayerType.HEAVY);
-        if (type == null) return;
+        SwingUtilities.invokeLater(Main::openGame);
+    }
+
+    private static void openGame() {
         JFrame frame = new JFrame("Hell Is Others Lite - PvP");
-        Game game = new Game(type);
+        Game game = new Game();
 
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setResizable(false);
