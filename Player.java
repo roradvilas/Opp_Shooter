@@ -1,17 +1,26 @@
-import java.awt.*;
-
 public class Player {
     final int id;
     double x, y;
     int radius = 16;
-    int health = 100, ammo = 60, loot = 0;
+    final PlayerType type;
+    final int maxHealth;
+    final double speed;
+    int health, ammo = 60, loot = 0;
     long lastShot = 0;
     int shootDelay = 130;
 
     public Player(int id, double x, double y) {
+        this(id, x, y, PlayerType.HEAVY, 100, 3.2);
+    }
+
+    protected Player(int id, double x, double y, PlayerType type, int maxHealth, double speed) {
         this.id = id;
         this.x = x;
         this.y = y;
+        this.type = type;
+        this.maxHealth = maxHealth;
+        this.health = maxHealth;
+        this.speed = speed;
     }
 
     public void move(boolean w, boolean s, boolean a, boolean d, World world) {
@@ -20,11 +29,15 @@ public class Player {
         if (dx == 0 && dy == 0) return;
 
         double len = Math.sqrt(dx * dx + dy * dy);
-        dx = dx / len * 3.2;
-        dy = dy / len * 3.2;
+        dx = dx / len * speed;
+        dy = dy / len * speed;
 
-        if (!world.collidesWithWall(x + dx, y, radius)) x += dx;
-        if (!world.collidesWithWall(x, y + dy, radius)) y += dy;
+        // Small steps prevent faster players from skipping walls and allow wall sliding.
+        int steps = (int)Math.ceil(speed);
+        for (int i = 0; i < steps; i++) {
+            if (!world.collidesWithWall(x + dx / steps, y, radius)) x += dx / steps;
+            if (!world.collidesWithWall(x, y + dy / steps, radius)) y += dy / steps;
+        }
     }
 
     public boolean canShoot(long now) {

@@ -18,7 +18,7 @@ public class GameServer {
     public GameServer(int port) { this.port = port; }
 
     public void start() throws IOException {
-        System.out.println("PvP server listening on ws://0.0.0.0:" + port);
+        Logger.getInstance().log("PvP server listening on ws://0.0.0.0:" + port);
         try (ServerSocket server = new ServerSocket(port)) {
             new Thread(this::gameLoop, "game-loop").start();
             while (true) {
@@ -28,15 +28,11 @@ public class GameServer {
                     if (!ws.handshake()) { socket.close(); continue; }
 
                     int id = nextPlayerId++;
-                    Player p = spawnPlayer(id);
-                    players.put(id, p);
-
                     Client client = new Client(id, ws);
                     clients.put(id, client);
-                    client.send("WELCOME|" + id);
                     new Thread(client, "player-" + id).start();
 
-                    System.out.println("Player " + id + " connected.");
+                    Logger.getInstance().log("Player " + id + " connected.");
                 } catch (Exception e) {
                     try { socket.close(); } catch (IOException ignored) {}
                     e.printStackTrace();
@@ -45,11 +41,13 @@ public class GameServer {
         }
     }
 
-    private Player spawnPlayer(int id) {
+    private Player spawnPlayer(int id, PlayerType type) {
+        PlayerFactory factory = PlayerFactory.forType(type);
         for (;;) {
             double x = 80 + random.nextInt(world.getWidth() - 160);
             double y = 80 + random.nextInt(world.getHeight() - 160);
-            if (!world.collidesWithWall(x, y, 16)) return new Player(id, x, y);
+            Player player = factory.createPlayer(id, x, y);
+            if (!world.collidesWithWall(x, y, player.radius)) return player;
         }
     }
 
@@ -129,7 +127,8 @@ public class GameServer {
             first = false;
             s.append(p.id).append(',').append(Math.round(p.x)).append(',')
              .append(Math.round(p.y)).append(',').append(p.health).append(',')
-             .append(p.ammo).append(',').append(p.loot);
+             .append(p.ammo).append(',').append(p.loot).append(',')
+             .append(p.type.name()).append(',').append(p.maxHealth);
         }
 
         s.append("|");
@@ -164,7 +163,7 @@ public class GameServer {
         Client c = clients.remove(id);
         players.remove(id);
         if (c != null) try { c.ws.close(); } catch (Exception ignored) {}
-        System.out.println("Player " + id + " disconnected.");
+        Logger.getInstance().log("Player " + id + " disconnected.");
     }
 
     private class Client implements Runnable {
@@ -184,7 +183,17 @@ public class GameServer {
                 while (true) {
                     String msg = ws.readText();
                     if (msg == null) break;
-                    parseInput(msg);
+                    if (!players.containsKey(id)) {
+                        String[] join = msg.split("\\|", -1);
+                        if (join.length != 2 || !join[0].equals("JOIN")) continue;
+                        PlayerType type;
+                        try { type = PlayerType.valueOf(join[1]); }
+                        catch (IllegalArgumentException e) { continue; }
+                        players.put(id, spawnPlayer(id, type));
+                        send("WELCOME|" + id);
+                    } else {
+                        parseInput(msg);
+                    }
                 }
             } catch (Exception ignored) {
             } finally {

@@ -40,16 +40,16 @@ public class World {
     public ArrayList<Point> getLoot() { return loot; }
 
     public boolean isWall(int pixelX, int pixelY) {
-        int tx = pixelX / TILE, ty = pixelY / TILE;
+        int tx = Math.floorDiv(pixelX, TILE), ty = Math.floorDiv(pixelY, TILE);
         if (tx < 0 || ty < 0 || tx >= width || ty >= height) return true;
         return walls[ty][tx];
     }
 
     public boolean collidesWithWall(double x, double y, int radius) {
-        return isWall((int)(x - radius), (int)(y - radius))
-            || isWall((int)(x + radius), (int)(y - radius))
-            || isWall((int)(x - radius), (int)(y + radius))
-            || isWall((int)(x + radius), (int)(y + radius));
+        return isWall((int)Math.floor(x - radius), (int)Math.floor(y - radius))
+            || isWall((int)Math.floor(x + radius), (int)Math.floor(y - radius))
+            || isWall((int)Math.floor(x - radius), (int)Math.floor(y + radius))
+            || isWall((int)Math.floor(x + radius), (int)Math.floor(y + radius));
     }
 
     public void draw(Graphics2D g, int cameraX, int cameraY, int screenWidth, int screenHeight) {

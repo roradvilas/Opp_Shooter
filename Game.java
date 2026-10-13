@@ -23,6 +23,10 @@ public class Game extends JPanel implements Runnable, WebSocketClient.Listener {
     private int cameraX, cameraY;
 
     public Game() {
+        this(PlayerType.HEAVY);
+    }
+
+    public Game(PlayerType type) {
         setPreferredSize(new Dimension(SCREEN_WIDTH, SCREEN_HEIGHT));
         setFocusable(true);
         addKeyListener(input);
@@ -32,6 +36,7 @@ public class Game extends JPanel implements Runnable, WebSocketClient.Listener {
         try {
             socket = new WebSocketClient(SERVER_HOST, SERVER_PORT, this);
             socket.connect();
+            socket.sendText("JOIN|" + type.name());
         } catch (Exception e) {
             connectionStatus = "Connection failed: " + e.getMessage();
         }
@@ -98,7 +103,9 @@ public class Game extends JPanel implements Runnable, WebSocketClient.Listener {
                 int id = Integer.parseInt(p[0]);
                 nextPlayers.put(id, new RemotePlayer(
                     id, Double.parseDouble(p[1]), Double.parseDouble(p[2]),
-                    Integer.parseInt(p[3]), Integer.parseInt(p[4]), Integer.parseInt(p[5])
+                    Integer.parseInt(p[3]), Integer.parseInt(p[4]), Integer.parseInt(p[5]),
+                    p.length >= 8 ? PlayerType.valueOf(p[6]) : PlayerType.HEAVY,
+                    p.length >= 8 ? Integer.parseInt(p[7]) : 100
                 ));
             }
         }
@@ -170,11 +177,11 @@ public class Game extends JPanel implements Runnable, WebSocketClient.Listener {
         g.setColor(Color.RED);
         g.fillRect(sx - 20, sy - 28, 40, 5);
         g.setColor(Color.GREEN);
-        g.fillRect(sx - 20, sy - 28, 40 * Math.max(0, p.hp) / 100, 5);
+        g.fillRect(sx - 20, sy - 28, 40 * Math.max(0, p.hp) / p.maxHealth, 5);
 
         g.setColor(Color.WHITE);
         g.setFont(new Font("Arial", Font.BOLD, 12));
-        String label = "P" + p.id;
+        String label = "P" + p.id + " " + (p.type == PlayerType.HEAVY ? "Heavy" : "Light");
         g.drawString(label, sx - g.getFontMetrics().stringWidth(label) / 2, sy + 34);
     }
 
@@ -185,7 +192,7 @@ public class Game extends JPanel implements Runnable, WebSocketClient.Listener {
         g.setFont(new Font("Arial", Font.BOLD, 16));
 
         if (me != null) {
-            g.drawString("HP: " + Math.max(0, me.hp), 30, 40);
+            g.drawString("HP: " + Math.max(0, me.hp) + "/" + me.maxHealth, 30, 40);
             g.drawString("Ammo: " + me.ammo, 30, 65);
             g.drawString("Loot: " + me.loot, 30, 90);
             g.drawString("Players: " + players.size(), 30, 115);
@@ -209,10 +216,13 @@ public class Game extends JPanel implements Runnable, WebSocketClient.Listener {
     }
 
     private static class RemotePlayer {
-        final int id, hp, ammo, loot;
+        final int id, hp, ammo, loot, maxHealth;
+        final PlayerType type;
         final double x, y;
-        RemotePlayer(int id, double x, double y, int hp, int ammo, int loot) {
+        RemotePlayer(int id, double x, double y, int hp, int ammo, int loot,
+                     PlayerType type, int maxHealth) {
             this.id=id; this.x=x; this.y=y; this.hp=hp; this.ammo=ammo; this.loot=loot;
+            this.type=type; this.maxHealth=maxHealth;
         }
     }
 }
