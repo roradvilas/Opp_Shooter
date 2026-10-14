@@ -11,6 +11,12 @@ public class Input implements KeyListener, MouseListener, MouseMotionListener {
     public void reset() { keys.clear(); mouseDown = false; }
 
     public boolean isKeyDown(int key) { return keys.contains(key); }
+    public MovementType movementType() {
+        if (isKeyDown(KeyEvent.VK_SPACE)) return MovementType.DASH;
+        if (isKeyDown(KeyEvent.VK_CONTROL)) return MovementType.SNEAK;
+        if (isKeyDown(KeyEvent.VK_SHIFT)) return MovementType.SPRINT;
+        return MovementType.WALK;
+    }
     public boolean isMouseDown() { return mouseDown; }
     public int getMouseX() { return mouseX; }
     public int getMouseY() { return mouseY; }

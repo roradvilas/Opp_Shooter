@@ -1,5 +1,6 @@
 public enum PlayerType {
-    HEAVY("Heavy (100 HP, normal speed)"),
+    HEAVY("Heavy (120 HP, 80% speed)"),
+    NORMAL("Normal (100 HP, 100% speed)"),
     LIGHT("Light (80 HP, 20% faster)");
 
     private final String label;

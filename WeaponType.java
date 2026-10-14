@@ -4,11 +4,7 @@ public enum WeaponType {
     private final String label;
     WeaponType(String label) { this.label = label; }
     public WeaponStrategy createStrategy() {
-        return switch (this) {
-            case ASSAULT_RIFLE -> new AssaultRifle();
-            case PISTOL -> new Pistol();
-            case SHOTGUN -> new Shotgun();
-        };
+        return new WeaponFactory().createWeapon(this);
     }
     @Override public String toString() { return label; }
 }

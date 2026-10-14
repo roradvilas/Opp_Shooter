@@ -43,12 +43,12 @@ public class GameServer {
         }
     }
 
-    private Player spawnPlayer(int id, PlayerType type) {
-        PlayerFactory factory = PlayerFactory.forType(type);
+    private Player spawnPlayer(int id, PlayerType type, WeaponType weapon) {
+        PlayerBuilder builder = new CombatPlayerBuilder().identity(id).playerType(type).weaponType(weapon);
         for (;;) {
             double x = 80 + random.nextInt(world.getWidth() - 160);
             double y = 80 + random.nextInt(world.getHeight() - 160);
-            Player player = factory.createPlayer(id, x, y);
+            Player player = builder.position(x, y).build();
             if (!world.collidesWithWall(x, y, player.radius)) return player;
         }
     }
@@ -81,7 +81,8 @@ public class GameServer {
             Player p = players.get(c.id);
             if (p == null || p.health <= 0) continue;
 
-            p.move(c.w, c.s, c.a, c.d, world);
+            p.setMovement(c.movementType);
+            p.move(c.w, c.s, c.a, c.d, world, now);
             p.aim(c.mouseWorldX, c.mouseWorldY);
 
             if (c.shoot && p.canShoot(now)) {
@@ -189,10 +190,10 @@ public class GameServer {
                 type = PlayerType.valueOf(parts[1]);
                 weapon = parts.length == 3 ? WeaponType.valueOf(parts[2]) : WeaponType.ASSAULT_RIFLE;
             } catch (IllegalArgumentException e) { return; }
-            Player player = spawnPlayer(client.id, type);
-            player.setWeapon(weapon);
+            Player player = spawnPlayer(client.id, type, weapon);
             player.addObserver(client);
             client.w = client.s = client.a = client.d = client.shoot = false;
+            client.movementType = MovementType.WALK;
             client.mouseWorldX = player.x + 100;
             client.mouseWorldY = player.y;
             players.put(client.id, player);
@@ -207,6 +208,7 @@ public class GameServer {
         final WebSocketServer ws;
         volatile boolean w, s, a, d, shoot;
         volatile double mouseWorldX, mouseWorldY;
+        volatile MovementType movementType = MovementType.WALK;
 
         Client(int id, WebSocketServer ws) {
             this.id = id; this.ws = ws;
@@ -234,17 +236,19 @@ public class GameServer {
 
         void parseInput(String msg) {
             String[] p = msg.split("\\|");
-            if (p.length != 8 || !p[0].equals("INPUT")) return;
-            w = p[1].equals("1"); s = p[2].equals("1");
-            a = p[3].equals("1"); d = p[4].equals("1");
-            shoot = p[5].equals("1");
+            if ((p.length != 8 && p.length != 9) || !p[0].equals("INPUT")) return;
             try {
                 double x = Double.parseDouble(p[6]), y = Double.parseDouble(p[7]);
+                MovementType mode = p.length == 9 ? MovementType.valueOf(p[8]) : MovementType.WALK;
                 if (Double.isFinite(x) && Double.isFinite(y)) {
+                    w = p[1].equals("1"); s = p[2].equals("1");
+                    a = p[3].equals("1"); d = p[4].equals("1");
+                    shoot = p[5].equals("1");
                     mouseWorldX = x;
                     mouseWorldY = y;
+                    movementType = mode;
                 }
-            } catch (NumberFormatException ignored) {}
+            } catch (IllegalArgumentException ignored) {}
         }
     }
 }

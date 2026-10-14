@@ -19,10 +19,22 @@ public class PlayerFactoryTest {
         };
         for (PlayerType type : PlayerType.values()) {
             Player player = PlayerFactory.forType(type).createPlayer(1, 100, 100);
-            check(type == PlayerType.HEAVY ? player instanceof HeavyPlayer : player instanceof LightPlayer,
+            check(switch (type) {
+                case HEAVY -> player instanceof HeavyPlayer;
+                case LIGHT -> player instanceof LightPlayer;
+                case NORMAL -> player instanceof NormalPlayer;
+            },
                     "Factory returned wrong class");
-            check(player.health == (type == PlayerType.HEAVY ? 100 : 80), "Health");
-            near(player.speed, type == PlayerType.HEAVY ? 3.2 : 3.84);
+            check(player.health == switch (type) {
+                case HEAVY -> 120;
+                case LIGHT -> 80;
+                case NORMAL -> 100;
+            }, "Health");
+            near(player.speed, switch (type) {
+                case HEAVY -> 2.56;
+                case LIGHT -> 3.84;
+                case NORMAL -> 3.2;
+            });
             check(player.ammo == 60 && player.radius == 16 && player.weaponType == WeaponType.ASSAULT_RIFLE, "Shared stats");
             player.move(false, false, false, true, open);
             near(player.x - 100, player.speed);
@@ -79,7 +91,7 @@ public class PlayerFactoryTest {
         });
         server.setDaemon(true);
         server.start();
-        WebSocketClient heavy = null, light = null;
+        WebSocketClient heavy = null, light = null, normal = null;
         try {
             Messages heavyMessages = new Messages();
             for (int attempt = 0; attempt < 100; attempt++) {
@@ -113,15 +125,33 @@ public class PlayerFactoryTest {
                     String[] values = row.split(",");
                     if (values.length < 8) continue;
                     int id = Integer.parseInt(values[0]);
-                    if (id == heavyId) foundHeavy = values[3].equals("100") && values[6].equals("HEAVY") && values[7].equals("100");
+                    if (id == heavyId) foundHeavy = values[3].equals("120") && values[6].equals("HEAVY") && values[7].equals("120");
                     if (id == lightId) foundLight = values[3].equals("80") && values[6].equals("LIGHT") && values[7].equals("80");
                 }
                 matched = foundHeavy && foundLight;
             }
             check(matched, "Server did not broadcast both selected types");
+            Messages normalMessages = new Messages();
+            normal = new WebSocketClient("localhost", port, normalMessages);
+            normal.connect();
+            normal.sendText("SPAWN|NORMAL|SHOTGUN");
+            int normalId = Integer.parseInt(normalMessages.await("WELCOME|").split("\\|")[1]);
+            normalMessages.await("SPAWNED");
+            boolean foundNormal = false;
+            deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (!foundNormal && System.nanoTime() < deadline) {
+                for (String row : normalMessages.await("STATE|").split("\\|", -1)[2].split(";")) {
+                    String[] values = row.split(",");
+                    if (values.length >= 10 && Integer.parseInt(values[0]) == normalId)
+                        foundNormal = values[3].equals("100") && values[6].equals("NORMAL")
+                                && values[7].equals("100") && values[9].equals("SHOTGUN");
+                }
+            }
+            check(foundNormal, "Normal player loadout missing from network state");
         } finally {
             if (heavy != null) heavy.close();
             if (light != null) light.close();
+            if (normal != null) normal.close();
         }
     }
 

@@ -10,6 +10,9 @@ public class Player {
     final PlayerType type;
     final int maxHealth;
     final double speed;
+    long dashUntil, nextDashAt;
+    private MovementType movementType = MovementType.WALK;
+    private MovementStrategy movement = new Walk();
     int health, ammo = 60, loot = 0;
     long lastShot = 0;
     double angle;
@@ -26,7 +29,7 @@ public class Player {
     }
 
     public Player(int id, double x, double y) {
-        this(id, x, y, PlayerType.HEAVY, 100, 3.2);
+        this(id, x, y, PlayerType.NORMAL, 100, 3.2);
     }
 
     protected Player(int id, double x, double y, PlayerType type, int maxHealth, double speed) {
@@ -40,20 +43,37 @@ public class Player {
     }
 
     public void move(boolean w, boolean s, boolean a, boolean d, World world) {
+        move(w, s, a, d, world, System.currentTimeMillis());
+    }
+
+    public void move(boolean w, boolean s, boolean a, boolean d, World world, long now) {
         double dx = (d ? 1 : 0) - (a ? 1 : 0);
         double dy = (s ? 1 : 0) - (w ? 1 : 0);
         if (dx == 0 && dy == 0) return;
 
+        double movementSpeed = speed * movement.speedMultiplier(this, now, true);
+
         double len = Math.sqrt(dx * dx + dy * dy);
-        dx = dx / len * speed;
-        dy = dy / len * speed;
+        dx = dx / len * movementSpeed;
+        dy = dy / len * movementSpeed;
 
         // Small steps prevent faster players from skipping walls and allow wall sliding.
-        int steps = (int)Math.ceil(speed);
+        int steps = (int)Math.ceil(movementSpeed);
         for (int i = 0; i < steps; i++) {
             if (!world.collidesWithWall(x + dx / steps, y, radius)) x += dx / steps;
             if (!world.collidesWithWall(x, y + dy / steps, radius)) y += dy / steps;
         }
+    }
+
+    public MovementType getMovementType() { return movementType; }
+    public void setMovement(MovementType type) {
+        Objects.requireNonNull(type);
+        if (movementType != type) equipMovement(type, type.createStrategy());
+    }
+
+    public void equipMovement(MovementType type, MovementStrategy strategy) {
+        movementType = Objects.requireNonNull(type);
+        movement = Objects.requireNonNull(strategy);
     }
 
     public boolean canShoot(long now) {
@@ -61,8 +81,12 @@ public class Player {
     }
 
     public void setWeapon(WeaponType type) {
-        weaponType = type;
-        weapon = type.createStrategy();
+        equipWeapon(type, Objects.requireNonNull(type).createStrategy());
+    }
+
+    public void equipWeapon(WeaponType type, WeaponStrategy strategy) {
+        weaponType = Objects.requireNonNull(type);
+        weapon = Objects.requireNonNull(strategy);
     }
 
     public void aim(double targetX, double targetY) {

@@ -24,11 +24,15 @@ java Main
 
 By default clients connect to `localhost:8080`.
 
-The client opens an in-game spawn screen with class and weapon selectors. Heavy keeps the
-original stats (100 HP, speed 3.2 per tick); Light has 80 HP and speed 3.84 per
-tick. Both have the same ammo, shooting delay, and collision radius. The server
-creates the selected type through the abstract `PlayerFactory` and its concrete
-`HeavyPlayerFactory` and `LightPlayerFactory` implementations.
+The client opens an in-game spawn screen with class and weapon selectors. Heavy has
+120 HP and 80% speed (2.56 per tick); Normal has 100 HP and 100% speed (3.2);
+Light has 80 HP and 120% speed (3.84). All have the same ammo and collision radius.
+The server constructs selected loadouts through `CombatPlayerBuilder`, which uses
+`CombatFactory`, `PlayerFactory`, and `WeaponFactory`.
+
+Move with WASD. Hold Ctrl to Sneak (50% of class speed), Shift to Sprint (150%),
+or Space to Dash (300% for 150 ms, with a one-second cooldown). Walk uses the
+class's baseline speed. Dash cooldown persists when switching movement modes.
 
 Choose a loadout and click Spawn to enter the world. On death, your body disappears
 and the same screen returns with a Respawn button. You can change class and weapon
@@ -73,7 +77,7 @@ snapshots.
 Console messages use the singleton `Logger` via `Logger.getInstance().log(text)`.
 
 Protocol:
-- client -> server: `INPUT|w|s|a|d|shoot|mouseWorldX|mouseWorldY`
+- client -> server: `INPUT|w|s|a|d|shoot|mouseWorldX|mouseWorldY|movement` (SNEAK, WALK, SPRINT, DASH; legacy messages without movement select WALK)
 - client -> server: `SPAWN|class|weapon` (accepted only when not alive)
 - server -> client: `STATE|lastAssignedPlayerId|id,x,y,hp,ammo,loot,type,maxHealth,angle,weapon;...|bulletId,x,y;...|lootX,lootY,lootType;...`
 - server -> client: `WELCOME|playerId|mapSeed`
@@ -95,6 +99,8 @@ java -cp out/tests PlayerFactoryTest
 java -cp out/tests GameplayTest
 java -cp out/tests DesignPatternsTest
 java -cp out/tests LootTest
+java -cp out/tests MovementStrategyTest
+java -cp out/tests DesignPatternsDemo
 ```
 
 Checks cover player stats, normalized movement, wall collisions and sliding,
@@ -105,6 +111,10 @@ Loot checks also cover five-second timer boundaries, spawn locations, both picku
 types, healing caps, full-health pickup retention, and typed loot rendering.
 
 ## Added design patterns
+
+See [DESIGN_PATTERNS.md](DESIGN_PATTERNS.md) for the requirement mapping, concrete
+factory families, four movement strategies, two concrete player builders,
+Observer sequence diagram, and runnable demonstration output.
 
 `Player` is the Observer subject: register a `PlayerObserver` with `addObserver`
 and unsubscribe with `removeObserver`. Damage, death, loot pickup, and consuming

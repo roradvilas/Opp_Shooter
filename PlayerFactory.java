@@ -4,6 +4,7 @@ public abstract class PlayerFactory {
     public static PlayerFactory forType(PlayerType type) {
         return switch (type) {
             case HEAVY -> new HeavyPlayerFactory();
+            case NORMAL -> new NormalPlayerFactory();
             case LIGHT -> new LightPlayerFactory();
         };
     }

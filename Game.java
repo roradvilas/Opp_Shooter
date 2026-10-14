@@ -55,6 +55,7 @@ public class Game extends JPanel implements Runnable, WebSocketClient.Listener {
         spawnScreen.add(spawnTitle);
         addSelectionLabel("Player class", 235);
         classSelection.setBounds(310, 265, 340, 35);
+        classSelection.setSelectedItem(PlayerType.NORMAL);
         spawnScreen.add(classSelection);
         addSelectionLabel("Weapon", 315);
         weaponSelection.setBounds(310, 345, 340, 35);
@@ -135,7 +136,8 @@ public class Game extends JPanel implements Runnable, WebSocketClient.Listener {
 
         try {
             socket.sendText("INPUT|" + bit(w) + "|" + bit(s) + "|" + bit(a) + "|" + bit(d)
-                    + "|" + bit(input.isMouseDown()) + "|" + mouseWorldX + "|" + mouseWorldY);
+                    + "|" + bit(input.isMouseDown()) + "|" + mouseWorldX + "|" + mouseWorldY
+                    + "|" + input.movementType().name());
         } catch (Exception ignored) {}
     }
 
@@ -199,7 +201,7 @@ public class Game extends JPanel implements Runnable, WebSocketClient.Listener {
                 nextPlayers.put(id, new RemotePlayer(
                     id, Double.parseDouble(p[1]), Double.parseDouble(p[2]),
                     Integer.parseInt(p[3]), Integer.parseInt(p[4]), Integer.parseInt(p[5]),
-                    p.length >= 8 ? PlayerType.valueOf(p[6]) : PlayerType.HEAVY,
+                    p.length >= 8 ? PlayerType.valueOf(p[6]) : PlayerType.NORMAL,
                     p.length >= 8 ? Integer.parseInt(p[7]) : 100,
                     p.length >= 10 ? Double.parseDouble(p[8]) : 0,
                     p.length >= 10 ? WeaponType.valueOf(p[9]) : WeaponType.ASSAULT_RIFLE
@@ -301,7 +303,11 @@ public class Game extends JPanel implements Runnable, WebSocketClient.Listener {
 
         g.setColor(Color.WHITE);
         g.setFont(new Font("Arial", Font.BOLD, 12));
-        String label = "P" + p.id + " " + (p.type == PlayerType.HEAVY ? "Heavy" : "Light");
+        String label = "P" + p.id + " " + switch (p.type) {
+            case HEAVY -> "Heavy";
+            case NORMAL -> "Normal";
+            case LIGHT -> "Light";
+        };
         g.drawString(label, sx - g.getFontMetrics().stringWidth(label) / 2, sy + 34);
     }
 
@@ -321,6 +327,7 @@ public class Game extends JPanel implements Runnable, WebSocketClient.Listener {
         g.setFont(new Font("Arial", Font.PLAIN, 13));
         g.drawString(connectionStatus, 700, 30);
         g.drawString("WASD move | Mouse shoot", 700, 48);
+        g.drawString("Ctrl sneak | Shift sprint | Space dash", 650, 84);
         g.drawString("Loot every 5s: gold = ammo, cross = health", 700, 66);
         if (System.currentTimeMillis() < notificationUntil) {
             g.setColor(new Color(240, 190, 60));

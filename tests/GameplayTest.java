@@ -174,10 +174,10 @@ public class GameplayTest {
                 Method collect = GameServer.class.getDeclaredMethod("collectLoot", Player.class);
                 collect.setAccessible(true);
                 collect.invoke(server, shooter);
-                check(shooter.health == 100 && shooter.ammo == 65 && shooter.loot == 2, "Network health reward");
+                check(shooter.health == 115 && shooter.ammo == 65 && shooter.loot == 2, "Network health reward");
             }
             check(first.await("STATE|").contains("60,60,HEALTH"), "Loot type missing from state");
-            check(first.await("EVENT|HEALTH_COLLECTED|").equals("EVENT|HEALTH_COLLECTED|10"), "Health observer notification");
+            check(first.await("EVENT|HEALTH_COLLECTED|").equals("EVENT|HEALTH_COLLECTED|25"), "Health observer notification");
             first.queue.clear();
             String state = first.await("STATE|");
             check(!hasPlayer(state, victimId), "Dead body broadcast to other client");
@@ -185,7 +185,7 @@ public class GameplayTest {
             second.await("SPAWNED");
             synchronized (server) {
                 Player respawned = players.get(victimId);
-                check(respawned instanceof HeavyPlayer && respawned.health == 100
+                check(respawned instanceof HeavyPlayer && respawned.health == 120
                         && respawned.ammo == 60 && respawned.loot == 0
                         && respawned.weaponType == WeaponType.ASSAULT_RIFLE, "Respawn loadout/reset");
                 check(!world.collidesWithWall(respawned.x, respawned.y, respawned.radius), "Respawn inside wall");
@@ -202,6 +202,24 @@ public class GameplayTest {
                 }
             }
             check(aimed, "Aim rotation not synchronized");
+            for (MovementType mode : MovementType.values()) {
+                observer.sendText("INPUT|0|0|0|0|0|60|160|" + mode.name());
+                boolean selected = false;
+                long modeDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                while (!selected && System.nanoTime() < modeDeadline) {
+                    first.await("STATE|");
+                    synchronized (server) { selected = players.get(observerId).getMovementType() == mode; }
+                }
+                check(selected, "Movement mode not selected over WebSocket: " + mode);
+            }
+            observer.sendText("INPUT|0|0|0|0|0|60|160");
+            boolean legacyWalk = false;
+            long legacyDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (!legacyWalk && System.nanoTime() < legacyDeadline) {
+                first.await("STATE|");
+                synchronized (server) { legacyWalk = players.get(observerId).getMovementType() == MovementType.WALK; }
+            }
+            check(legacyWalk, "Legacy input did not select Walk");
             victim.sendText("SPAWN|LIGHT|PISTOL");
             Thread.sleep(50);
             synchronized (server) {

@@ -80,6 +80,46 @@ public class DesignPatternsTest {
         weapon.bulletPrototype().damage = 33;
         Bullet shot = weapon.fire(new Player(7, 100, 100), 0, () -> 12).get(0);
         check(shot.damage == 33 && shot.id == 12 && shot.ownerId == 7, "Weapon did not clone its prototype");
+
+        prototype.modifiers().setDamageBonus(5);
+        Bullet shallow = prototype.shallowCopy(), deep = prototype.deepCopy();
+        for (Bullet copy : List.of(shallow, deep)) {
+            check(copy != prototype && copy.id == prototype.id && copy.ownerId == prototype.ownerId
+                    && copy.x == prototype.x && copy.y == prototype.y && copy.vx == prototype.vx
+                    && copy.vy == prototype.vy && copy.damage == prototype.damage && copy.alive == prototype.alive,
+                    "State copy did not preserve every primitive field");
+        }
+        check(shallow.modifiers() == prototype.modifiers() && deep.modifiers() != prototype.modifiers(),
+                "Wrong nested copy identity");
+        shallow.modifiers().setDamageBonus(10);
+        check(prototype.effectiveDamage() == 50 && deep.effectiveDamage() == 45, "Shallow mutation");
+        deep.modifiers().setDamageBonus(20);
+        check(prototype.effectiveDamage() == 50 && deep.effectiveDamage() == 60, "Deep mutation leaked");
+
+        CopyMode previous = Bullet.getCopyMode();
+        try {
+            for (CopyMode mode : CopyMode.values()) {
+                Bullet.setCopyMode(mode);
+                Bullet spawned = prototype.copy(99, 8, 200, 300, Math.PI / 2);
+                check(spawned.id == 99 && spawned.ownerId == 8 && spawned.x == 200 && spawned.y == 300
+                        && spawned.alive && spawned.damage == prototype.damage, "Spawn copy metadata/reset");
+                check((spawned.modifiers() == prototype.modifiers()) == (mode == CopyMode.SHALLOW),
+                        "Spawn copy ignored runtime mode");
+                for (WeaponType type : WeaponType.values()) {
+                    WeaponStrategy strategy = type.createStrategy();
+                    strategy.bulletPrototype().modifiers().setDamageBonus(5);
+                    List<Bullet> fired = strategy.fire(new NormalPlayer(1, 100, 100), 0, new java.util.concurrent.atomic.AtomicLong()::incrementAndGet);
+                    for (Bullet bullet : fired) {
+                        check(bullet.effectiveDamage() == 30, "Weapon lost prototype modifiers");
+                        check((bullet.modifiers() == strategy.bulletPrototype().modifiers()) == (mode == CopyMode.SHALLOW),
+                                "Weapon ignored runtime mode");
+                    }
+                    if (fired.size() > 1)
+                        check((fired.get(0).modifiers() == fired.get(1).modifiers()) == (mode == CopyMode.SHALLOW),
+                                "Shotgun pellets share wrong nested state");
+                }
+            }
+        } finally { Bullet.setCopyMode(previous); }
     }
 
     private static void testClientEventsAndMap() throws Exception {

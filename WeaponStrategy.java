@@ -1,6 +1,7 @@
 import java.util.List;
 import java.util.function.LongSupplier;
 
+/** Weapon products control firing; MovementStrategy demonstrates the four movement algorithms. */
 public interface WeaponStrategy {
     int ASSAULT_RIFLE_DELAY = 130;
     int shootingDelay();
