@@ -7,7 +7,7 @@ classes; the outputs quoted below were captured from throwaway demo runs of the 
 | Requirement | Package | Implementation and evidence |
 | --- | --- | --- |
 | a. Singleton, thread-safe | `singleton` | `Logger`; a 200-thread run saw one instance (see below). |
-| b. Factory, 3+ classes | `factory` | `PlayerFactory.forType` → `HeavyPlayerFactory`, `NormalPlayerFactory`, `LightPlayerFactory`; `WeaponFactory`. |
+| b. Factory, 3+ classes | `factory` | abstract `WeaponFactory` (factory method `createWeapon()`) → `PistolFactory`, `AssaultRifleFactory`, `ShotgunFactory`, `LaserFactory`. |
 | c. Abstract Factory, 2+ factories × 3 classes | `abstractfactory` | abstract class `AbstractFactory`; `CombatFactory` and `TrainingFactory` each produce 3 player classes. |
 | d. Strategy, 4+ classes | `strategy` | `Sneak`, `Walk`, `Sprint`, `Dash` (`MovementStrategy`); `Pistol`, `AssaultRifle`, `Shotgun` (`WeaponStrategy`). |
 | e. Observer, sequence diagram | `observer` | `PlayerSubject`, `PlayerObserver`, `PlayerEvent`; diagram below. |
@@ -151,8 +151,8 @@ Player p = builder.start(factory.create(type, id, x, y))
 ## Adapter
 
 Target `WeaponStrategy`; adaptee `LegacyLaserGun` with an incompatible API;
-adapter `LaserGunAdapter`. `WeaponFactory` maps `WeaponType.LASER` to
-`new LaserGunAdapter(new LegacyLaserGun())`.
+adapter `LaserGunAdapter`. `LaserFactory` returns
+`new LaserGunAdapter(new LegacyLaserGun())` for `WeaponType.LASER`.
 
 | `WeaponStrategy` (target, 4 methods) | `LegacyLaserGun` (adaptee, 5 methods) | Adapter mapping |
 | --- | --- | --- |
@@ -300,6 +300,10 @@ is a `CopyOnWriteArrayList`, and callbacks run synchronously on the publisher's 
 
 ```mermaid
 classDiagram
+    WeaponFactory <|-- PistolFactory
+    WeaponFactory <|-- AssaultRifleFactory
+    WeaponFactory <|-- ShotgunFactory
+    WeaponFactory <|-- LaserFactory
     AbstractFactory <|-- CombatFactory
     AbstractFactory <|-- TrainingFactory
     HeavyPlayer <|-- CombatHeavyPlayer

@@ -8,7 +8,7 @@ public enum WeaponType {
     private final String label;
     WeaponType(String label) { this.label = label; }
     public WeaponStrategy createStrategy() {
-        return new WeaponFactory().createWeapon(this);
+        return WeaponFactory.forType(this).createWeapon();
     }
     @Override public String toString() { return label; }
 }

@@ -14,6 +14,13 @@ public abstract class WeaponDecorator implements WeaponStrategy {
 
     protected WeaponDecorator(WeaponStrategy wrappee) { this.wrappee = Objects.requireNonNull(wrappee); }
 
+    /** True if {@code weapon} is, or wraps at any depth, a decorator of the given class. */
+    public static boolean isApplied(WeaponStrategy weapon, Class<? extends WeaponDecorator> decorator) {
+        for (WeaponStrategy w = weapon; w instanceof WeaponDecorator d; w = d.wrappee)
+            if (decorator.isInstance(d)) return true;
+        return false;
+    }
+
     public int shootingDelay() { return wrappee.shootingDelay(); }
     public int bulletCount() { return wrappee.bulletCount(); }
     public Bullet bulletPrototype() { return wrappee.bulletPrototype(); }

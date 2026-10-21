@@ -16,7 +16,7 @@ public class ServerMain {
 
     public static void main(String[] args) throws Exception {
         int port = 8080;
-        boolean training = true;
+        boolean training = false;
         for (String arg : args) {
             if (arg.equals("--training")) training = true;
             else port = Integer.parseInt(arg);

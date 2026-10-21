@@ -47,13 +47,18 @@ mouse and is synchronized to other clients. Picked-up loot disappears for everyo
 
 The map starts with no loot. The server spawns one pickup every five seconds on
 an open floor tile more than two tiles (80 pixels) from every existing pickup,
-randomly choosing ammo or health with equal probability. This circular exclusion
-radius applies to both loot types and includes positions exactly two tiles away.
+randomly choosing one of four types with equal probability. This circular exclusion
+radius applies to every type and includes positions exactly two tiles away.
 Gold boxes give 5 ammo; green boxes with a white cross restore up to 25 HP,
-capped at the selected class's maximum health. Full-health players leave health
-pickups on the ground. Both types increase the loot counter when collected and
-show a pickup notification. Loot remains until collected; spawning is skipped when
-no floor tile satisfies the spacing rule.
+capped at the selected class's maximum health. Blue boxes are a rapid-fire power-up
+(`RapidFireDecorator`, half the shooting delay) and red boxes a damage boost
+(`DamageBoostDecorator`, +10 damage per bullet): collecting one wraps the player's
+current weapon at runtime. Power-ups last until death or a weapon change, since a
+respawn builds a new player. They do not stack: a player already wearing a power-up
+leaves another of the same kind on the ground (different kinds can be combined), as
+full-health players do with health pickups. Every collected pickup increases the loot
+counter and shows a notification. Loot remains until collected; spawning is skipped
+when no floor tile satisfies the spacing rule.
 
 Weapons implement `WeaponStrategy` and share the server's bullet ID counter and
 the player's ammo pool. Shooting speed means fire rate; all bullets retain the
@@ -92,7 +97,7 @@ Protocol:
 - client -> server: `SPAWN|class|weapon` (accepted only when not alive)
 - server -> client: `STATE|highestSpawnedPlayerId|id,x,y,hp,ammo,loot,type,maxHealth,angle,weapon;...|bulletId,x,y;...|lootX,lootY,lootType;...`
 - server -> client: `WELCOME|playerId|mapSeed`
-- server -> client: `EVENT|type|amount` (DAMAGED, DIED, LOOT_COLLECTED, HEALTH_COLLECTED, AMMO_EMPTY)
+- server -> client: `EVENT|type|amount` (DAMAGED, DIED, LOOT_COLLECTED, HEALTH_COLLECTED, AMMO_EMPTY, POWERUP)
 - server -> client: `SPAWNED` or `DIED`
 
 For example: `SPAWN|LIGHT|SHOTGUN`. The server sends WELCOME on connection,

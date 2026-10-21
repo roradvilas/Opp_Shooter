@@ -1,5 +1,8 @@
 package bridge;
 
+import decorator.DamageBoostDecorator;
+import decorator.RapidFireDecorator;
+import decorator.WeaponDecorator;
 import game.LootType;
 import game.World;
 import observer.PlayerEvent;
@@ -130,14 +133,23 @@ public class Player implements PlayerSubject {
     public boolean collectLoot(LootType type) {
         Objects.requireNonNull(type);
         if (health <= 0 || (type == LootType.HEALTH && health == maxHealth)) return false;
+        // Power-ups do not stack: one already worn is left on the ground.
+        if (type == LootType.RAPID_FIRE && WeaponDecorator.isApplied(weapon, RapidFireDecorator.class)) return false;
+        if (type == LootType.DAMAGE_BOOST && WeaponDecorator.isApplied(weapon, DamageBoostDecorator.class)) return false;
         loot++;
         if (type == LootType.AMMO) {
             ammo += type.amount();
             publish(PlayerEvent.Type.LOOT_COLLECTED, type.amount());
-        } else {
+        } else if (type == LootType.HEALTH) {
             int restored = Math.min(type.amount(), maxHealth - health);
             health += restored;
             publish(PlayerEvent.Type.HEALTH_COLLECTED, restored);
+        } else if (type == LootType.RAPID_FIRE) {
+            equipWeapon(weaponType, new RapidFireDecorator(weapon));
+            publish(PlayerEvent.Type.POWERUP, 0);
+        } else {
+            equipWeapon(weaponType, new DamageBoostDecorator(weapon));
+            publish(PlayerEvent.Type.POWERUP, 0);
         }
         return true;
     }

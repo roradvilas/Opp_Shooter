@@ -45,7 +45,8 @@ public class World {
             }
             if (available.isEmpty()) return false;
             Point position = available.get(random.nextInt(available.size()));
-            LootType type = random.nextBoolean() ? LootType.AMMO : LootType.HEALTH;
+            LootType[] types = LootType.values();
+            LootType type = types[random.nextInt(types.length)];
             loot.add(new Loot(position.x, position.y, type));
             return true;
         }

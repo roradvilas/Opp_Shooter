@@ -10,13 +10,12 @@ import strategy.WeaponType;
 import java.util.Objects;
 
 public final class CombatPlayerBuilder implements PlayerBuilder {
-    private final WeaponFactory weapons = new WeaponFactory();
     private Player player;
 
     @Override public PlayerBuilder start(Player player) { this.player = Objects.requireNonNull(player); return this; }
 
     @Override public PlayerBuilder addWeapon(WeaponType type) {
-        player.equipWeapon(type, weapons.createWeapon(type));
+        player.equipWeapon(type, WeaponFactory.forType(type).createWeapon());
         return this;
     }
 

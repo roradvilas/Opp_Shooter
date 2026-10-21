@@ -226,12 +226,15 @@ public class Game extends JPanel implements Runnable, ClientFacade.Listener {
             if (p.type() == LootType.AMMO) {
                 g.setColor(new Color(240, 190, 60));
                 g.fillRect(sx - 7, sy - 7, 14, 14);
-            } else {
+            } else if (p.type() == LootType.HEALTH) {
                 g.setColor(new Color(65, 200, 100));
                 g.fillRect(sx - 8, sy - 8, 16, 16);
                 g.setColor(Color.WHITE);
                 g.fillRect(sx - 2, sy - 6, 4, 12);
                 g.fillRect(sx - 6, sy - 2, 12, 4);
+            } else {
+                g.setColor(p.type() == LootType.RAPID_FIRE ? new Color(70, 140, 235) : new Color(220, 60, 60));
+                g.fillRect(sx - 8, sy - 8, 16, 16);
             }
         }
 
@@ -292,6 +295,7 @@ public class Game extends JPanel implements Runnable, ClientFacade.Listener {
         g.drawString(connectionStatus, 700, 30);
         g.drawString("WASD move | Mouse shoot", 700, 48);
         g.drawString("Ctrl sneak | Shift sprint | Space dash", 650, 84);
+        g.drawString("Blue = rapid fire, red = damage boost", 680, 102);
         g.drawString("Loot every 5s: gold = ammo, cross = health", 700, 66);
         if (System.currentTimeMillis() < notificationUntil) {
             g.setColor(new Color(240, 190, 60));

@@ -9,4 +9,5 @@ public class LegacyLaserGun {
     public double rechargeTimeMs() { return 400; }
     public double beamSpeed() { return 18; }
     public int beamDamage() { return 35; }
+    public void dischargeCapacitor() { charged = false; }
 }

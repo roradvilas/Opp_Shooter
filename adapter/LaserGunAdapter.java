@@ -25,6 +25,10 @@ public final class LaserGunAdapter implements WeaponStrategy {
 
     public List<Bullet> fire(Player player, double angle, LongSupplier bulletIds) {
         laser.chargeCapacitor();
-        return laser.isCharged() ? List.of(bullet(player, angle, bulletIds)) : List.of();
+        if (laser.isCharged()) {
+            laser.dischargeCapacitor();
+            return List.of(bullet(player, angle, bulletIds));
+        }
+        return List.of();
     }
 }
