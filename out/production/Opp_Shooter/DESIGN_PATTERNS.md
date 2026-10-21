@@ -1,241 +1,363 @@
 # Game design patterns
 
-This implementation follows the requested player, weapon, movement, and builder
-structure. The runnable `DesignPatternsDemo` shows each pattern and checks its
-behavior. `HeavyPlayer.java` is the Heavy product; `WeaponStrategy.java` remains
-the firing contract for weapon products. The four required Strategy classes
-implement the separate `MovementStrategy` contract.
+Every pattern lives in its own Java package. Non-pattern code (map, loot, Swing client, WebSocket
+code, `GameServer`, `BotController`) is in package `game`. The repository has no demo or test
+classes; the outputs quoted below were captured from throwaway demo runs of the classes described.
 
-| Requirement | Implementation |
-| --- | --- |
-| b. Factory: at least 3 classes in a family | Player family: `HeavyPlayer`, `NormalPlayer`, `LightPlayer`. Weapon family: `Pistol`, `AssaultRifle`, `Shotgun`. |
-| c. Abstract Factory: at least 2 real factories, 3 classes in each family | `CombatFactory` and `TrainingFactory` implement `AbstractFactory`. Each produces a player, weapon, and movement strategy; both support all three player and weapon classes. |
-| d. Strategy: at least 4 classes | `Sneak`, `Walk`, `Sprint`, `Dash` implement `MovementStrategy`. |
-| e. Observer demonstrated with sequence diagram | `Player` publishes `PlayerEvent` to `PlayerObserver`; the server's `Client` subscriber forwards events to the game HUD. Diagram below. |
-| f. Builder: at least 2 concrete builders | `CombatPlayerBuilder` and `TrainingPlayerBuilder` extend `PlayerBuilder`, accepting `PlayerType` and `WeaponType`. |
-
-## Factory
-
-`PlayerFactory.forType(type)` chooses a creator. Its `createPlayer` factory
-method returns the corresponding concrete player without the caller constructing
-that subclass. The three concrete creators are `HeavyPlayerFactory`,
-`NormalPlayerFactory`, and `LightPlayerFactory`.
-
-Normal's baseline speed is 3.2 units per server tick:
-
-| Product | HP | Class speed | Units per tick while walking |
-| --- | --- | --- | --- |
-| `HeavyPlayer` | 120 | 80% | 2.56 |
-| `NormalPlayer` | 100 | 100% | 3.20 |
-| `LightPlayer` | 80 | 120% | 3.84 |
-
-`WeaponFactory.createWeapon(type)` creates one of these three concrete weapons:
-
-| Product | Delay between shots | Bullets / ammo per shot |
+| Requirement | Package | Implementation and evidence |
 | --- | --- | --- |
-| `Pistol` | 325 ms | 1 |
-| `AssaultRifle` | 130 ms | 1 |
-| `Shotgun` | 650 ms | 3 |
+| a. Singleton, thread-safe | `singleton` | `Logger`; a 200-thread run saw one instance (see below). |
+| b. Factory, 3+ classes | `factory` | `PlayerFactory.forType` → `HeavyPlayerFactory`, `NormalPlayerFactory`, `LightPlayerFactory`; `WeaponFactory`. |
+| c. Abstract Factory, 2+ factories × 3 classes | `abstractfactory` | abstract class `AbstractFactory`; `CombatFactory` and `TrainingFactory` each produce 3 player classes. |
+| d. Strategy, 4+ classes | `strategy` | `Sneak`, `Walk`, `Sprint`, `Dash` (`MovementStrategy`); `Pistol`, `AssaultRifle`, `Shotgun` (`WeaponStrategy`). |
+| e. Observer, sequence diagram | `observer` | `PlayerSubject`, `PlayerObserver`, `PlayerEvent`; diagram below. |
+| f. Builder, 2+ concrete builders | `builder` | `PlayerBuilder`; `CombatPlayerBuilder`, `TrainingPlayerBuilder`. |
+| g. Adapter, different method counts | `adapter` | `LaserGunAdapter` (4-method `WeaponStrategy`) wraps `LegacyLaserGun` (5 methods). |
+| h. Prototype, deep vs shallow, addresses | `prototype` | `Bullet`, `BulletModifiers`, `CopyMode`; identity hashes of the copies are listed below. |
+| i. Decorator, 3+ levels | `decorator` | `Logging(DamageBoost(RapidFire(Pistol)))`. |
+| j. Command with `undo()` | `command` | `MoveCommand`, `ShootCommand`, `SwitchWeaponCommand`, `SwitchMovementCommand`; `CommandInvoker`. |
+| k. Facade, 2+ clients, 3+ subsystems | `facade` | `GameFacade` (server side) with clients `game.GameServer` and `game.BotController`; `ClientFacade` (client side) hides the connection; details below. |
+| l. Bridge, 2+ abstractions, 2+ implementations | `bridge` | `Player` → `HeavyPlayer`/`NormalPlayer`/`LightPlayer`; `Armor` → `NoArmor`/`KevlarArmor`/`PlatedArmor`. |
 
-The shotgun emits a center bullet and two side bullets. Each side's angle is
-randomly sampled between 3 and 15 degrees from the aim direction, one on each
-side. All three bullets have unique IDs and consume three rounds together.
-The existing bullet speed (9) and base damage (25) are preserved.
+`Player`, `PlayerType` and the three player classes are in `bridge` because they are the Bridge
+abstraction. `Bullet` is in `prototype`. State they expose (`Player.health`, `Bullet.damage`, ...)
+is public so the other packages can use it.
 
-```java
-Player heavy = PlayerFactory.forType(PlayerType.HEAVY).createPlayer(1, 200, 200);
-WeaponStrategy shotgun = new WeaponFactory().createWeapon(WeaponType.SHOTGUN);
+## Singleton
+
+`Logger` is created by a `static final` field initializer. The JVM runs class initialization exactly
+once under a lock, so no thread can see two instances or a half-built one; `log` is `synchronized`
+so concurrent lines never interleave. A run that started 200 threads behind a latch, released them
+together, and checked the result gave:
+
+```text
+Threads released simultaneously: 200
+Distinct Logger instances seen:  1 (identity 4af0c6a9)
+Log lines written / intact:      200 / 200
+PASS: one instance, no interleaved output
 ```
 
-`WeaponType.createStrategy` delegates to `WeaponFactory`, so existing callers
-also use the new factory.
+## Prototype
+
+`Bullet implements Cloneable`; its nested `BulletModifiers` (`damageBonus`) is the
+reference field whose copying differs between modes.
+
+- `shallowCopy()` is `super.clone()`: the copy **shares** the `BulletModifiers`.
+- `deepCopy()` is `shallowCopy()` plus `modifiers.copy()`: the copy owns its own.
+- `copy(id, ownerId, x, y, angle)` uses the static, runtime-switchable
+  `Bullet.getCopyMode()` / `setCopyMode()` (default `DEEP`), then sets id, owner, position,
+  `alive = true`, and velocity from `angle × hypot(vx, vy)`.
+- `effectiveDamage()` = `damage + modifiers.getDamageBonus()`; the server applies it on hit.
+
+Captured output for `DEEP` (the identity hashes differ per run):
+
+```text
+Copy mode used by Bullet.copy(): DEEP
+-- before mutation
+original  bullet=3f99bd52 modifiers=4f023edb effectiveDamage=30
+shallow   bullet=33c7353a modifiers=4f023edb effectiveDamage=30
+deep      bullet=681a9515 modifiers=3af49f1c effectiveDamage=30
+copy()    bullet=19469ea2 modifiers=13221655 effectiveDamage=30
+-- after shallow.modifiers().setDamageBonus(99)
+original  bullet=3f99bd52 modifiers=4f023edb effectiveDamage=124
+shallow   bullet=33c7353a modifiers=4f023edb effectiveDamage=124
+deep      bullet=681a9515 modifiers=3af49f1c effectiveDamage=30
+copy()    bullet=19469ea2 modifiers=13221655 effectiveDamage=30
+```
+
+The shallow copy has the original's `modifiers` hash, so mutating it changes the original
+(30 → 124). The deep copy has its own hash and stays at 30. With `SHALLOW`, the `copy()` row
+shares the original's modifiers hash and also changes to 124.
+
+## Bridge
+
+Abstraction: `Player` holds an `Armor` (`getArmor` / `setArmor`, default `NoArmor`) and
+applies `amount = armor.absorb(amount)` in `damage()`. Refined abstractions: `HeavyPlayer`,
+`NormalPlayer`, `LightPlayer`. Implementors: `NoArmor` (100% passes through), `KevlarArmor`
+(75%), `PlatedArmor` (50%); results round up, so a hit never becomes 0. The two hierarchies
+vary independently (a 40-point hit):
+
+```text
+              None            Kevlar          Plated
+HeavyPlayer   40 (80/120)     30 (90/120)     20 (100/120)
+NormalPlayer  40 (60/100)     30 (70/100)     20 (80/100)
+LightPlayer   40 (40/80)      30 (50/80)      20 (60/80)
+```
+
+Cells are damage taken (HP left / max HP).
+
+**Bridge vs Strategy vs Adapter**
+
+| | Bridge | Strategy | Adapter |
+| --- | --- | --- | --- |
+| Intent | Split an abstraction from its implementation so **both hierarchies** grow independently (3 player classes × 3 armors, not 9 subclasses). | Make **one algorithm** of a context swappable at runtime. | Make an **existing, incompatible** class usable through the interface a client expects. |
+| Structure | Abstraction (`Player`) holds an implementor (`Armor`); the abstraction itself has refined subclasses. | Context holds a strategy; the context has no hierarchy of its own that varies with the strategy. | Adapter implements the target and wraps the adaptee. |
+| When decided | Up front, at design time. | Up front, to allow runtime swapping. | After the fact, because the adaptee already exists and cannot change. |
+| Here | `Player`/`Armor`: the armor is chosen by the builder and class and armor vary separately. | `Player`/`MovementStrategy`: movement is swapped whenever the client's key changes. | `LaserGunAdapter`/`LegacyLaserGun`: a legacy 5-method API presented as a 4-method `WeaponStrategy`. |
+
+In short: Strategy swaps behaviour behind one interface, Adapter converts one interface into another,
+and Bridge keeps two independently varying dimensions from multiplying into a class explosion.
+
+## Decorator
+
+`WeaponStrategy` is the component; `WeaponDecorator` holds `protected final WeaponStrategy
+wrappee` and delegates all four methods. `LoggingWeaponDecorator` logs through
+`Logger.getInstance()` before and after `fire`; `RapidFireDecorator` halves
+`shootingDelay()`; `DamageBoostDecorator` adds 10 to the damage of every bullet it returns.
+Wrapping a `Pistol` in three decorators, one level at a time, gave:
+
+```text
+level  weapon                                              delay  damage
+0      Pistol                                              325 ms    25
+1      RapidFire(Pistol)                                   162 ms    25
+2      DamageBoost(RapidFire(Pistol))                      162 ms    35
+3      Logging(DamageBoost(RapidFire(Pistol)))             162 ms    35
+```
 
 ## Abstract Factory
 
-`AbstractFactory` defines three related products: player, weapon, and movement
-strategy. The concrete factories compose the requested `PlayerFactory` and
-`WeaponFactory`. Two complete loadout factories are provided so the implementation
-also demonstrates creating related product families through one interface.
-
-| Real factory | Default player class | Default weapon class | Default movement class |
-| --- | --- | --- | --- |
-| `CombatFactory` | `NormalPlayer` | `AssaultRifle` | `Walk` |
-| `TrainingFactory` | `LightPlayer` | `Pistol` | `Sneak` |
-
-Each row contains three concrete product classes. Both real factories can also
-create all `HeavyPlayer`, `NormalPlayer`, and `LightPlayer` products, and all
-`Pistol`, `AssaultRifle`, and `Shotgun` products when the caller supplies a type.
-Their default recipes and movement products distinguish the loadout families.
-
 ```java
-AbstractFactory factory = new TrainingFactory();
-Player player = factory.createPlayer(factory.defaultPlayerType(), 1, 200, 200);
-player.equipWeapon(factory.defaultWeaponType(), factory.createWeapon(factory.defaultWeaponType()));
-player.equipMovement(factory.defaultMovementType(), factory.createMovement());
+abstract class AbstractFactory {
+    abstract Player createHeavy(int id, double x, double y);
+    abstract Player createNormal(int id, double x, double y);
+    abstract Player createLight(int id, double x, double y);
+    Player create(PlayerType t, int id, double x, double y) { /* switch on t */ }
+}
 ```
 
-## Strategy
-
-`Player` is the context and holds the current `MovementStrategy`. `setMovement`
-switches its strategy. `move` normalizes the input direction, multiplies the
-class speed by the strategy's multiplier, and checks collisions in small steps.
-This keeps diagonal speed consistent and prevents faster movement from skipping
-walls.
-
-| Concrete strategy | Multiplier of class speed | Control |
-| --- | --- | --- |
-| `Sneak` | 0.5 | Hold Ctrl |
-| `Walk` | 1.0 | WASD without a movement modifier |
-| `Sprint` | 1.5 | Hold Shift |
-| `Dash` | 3.0 during its burst, then 1.0 | Hold Space |
-
-Dash lasts 150 ms and has a 1000 ms cooldown measured from its start. Holding
-Space triggers another burst when the cooldown ends and the player is moving.
-Standing still does not consume a dash. Cooldown timestamps belong to the
-player, so releasing Space or switching strategies cannot reset the cooldown.
-Input priority is Space, then Ctrl, then Shift, then Walk.
-
-For a Normal player, the four speeds are 1.6, 3.2, 4.8, and 9.6 units per tick.
-For Heavy and Light, the same movement multipliers apply to their class speeds.
-
-```java
-player.setMovement(MovementType.SPRINT);
-player.move(false, false, false, true, world, now); // right
-```
-
-The client appends the movement enum to input snapshots. The server applies the
-strategy and owns dash timing. Old eight-field INPUT messages remain accepted
-and select Walk; the new ninth field contains SNEAK, WALK, SPRINT, or DASH.
-Invalid movement values are ignored along with that input message.
+| Factory | Heavy | Normal | Light | Behaviour |
+| --- | --- | --- | --- | --- |
+| `CombatFactory` | `CombatHeavyPlayer` | `CombatNormalPlayer` | `CombatLightPlayer` | same as the base classes |
+| `TrainingFactory` | `TrainingHeavyPlayer` | `TrainingNormalPlayer` | `TrainingLightPlayer` | `damage()` never takes health below 1 |
 
 ## Builder
 
-`PlayerBuilder` defines the common construction steps: player type, weapon type,
-identity, position, and `build`. The two concrete builders choose their respective
-Abstract Factory and default recipe:
+`PlayerBuilder` steps: `start(Player)`, `addWeapon(WeaponType)`, `addArmor()`,
+`addMovement()`, `addAmmo()`, `build()`. The first five return the builder; `build()` returns
+the finished `Player`. Both builders implement every step differently:
 
-| Concrete builder | Factory | Default constructed loadout |
+| Step | `CombatPlayerBuilder` | `TrainingPlayerBuilder` |
 | --- | --- | --- |
-| `CombatPlayerBuilder` | `CombatFactory` | Normal + Assault Rifle + Walk |
-| `TrainingPlayerBuilder` | `TrainingFactory` | Light + Pistol + Sneak |
-
-Both accept any combination of the three player types and three weapon types:
+| weapon | plain weapon from `WeaponFactory` | `LoggingWeaponDecorator(weapon)` |
+| armor | `KevlarArmor` | `PlatedArmor` |
+| movement | `Walk` | `Sneak` |
+| ammo | 60 | 999 |
 
 ```java
-Player player = new CombatPlayerBuilder()
-        .playerType(PlayerType.HEAVY)
-        .weaponType(WeaponType.SHOTGUN)
-        .identity(42)
-        .position(200, 200)
-        .build();
-
-Player trainee = new TrainingPlayerBuilder().identity(43).position(400, 200).build();
+Player p = builder.start(factory.create(type, id, x, y))
+        .addWeapon(w).addArmor().addMovement().addAmmo().build();
 ```
 
-Each call creates a new player, weapon prototype, and movement strategy. Health,
-ammo, shot timers, observer subscriptions, and dash cooldown are independent.
-`GameServer.spawnPlayer` uses `CombatPlayerBuilder` with the spawn screen's
-selected types; it retries positions until the player's collision radius fits.
-Training construction is available through its builder API and the demonstration.
+## Adapter
 
-```mermaid
-classDiagram
-    AbstractFactory <|.. CombatFactory
-    AbstractFactory <|.. TrainingFactory
-    CombatFactory ..> PlayerFactory
-    CombatFactory ..> WeaponFactory
-    TrainingFactory ..> PlayerFactory
-    TrainingFactory ..> WeaponFactory
-    PlayerFactory ..> HeavyPlayer
-    PlayerFactory ..> NormalPlayer
-    PlayerFactory ..> LightPlayer
-    WeaponFactory ..> Pistol
-    WeaponFactory ..> AssaultRifle
-    WeaponFactory ..> Shotgun
-    MovementStrategy <|.. Sneak
-    MovementStrategy <|.. Walk
-    MovementStrategy <|.. Sprint
-    MovementStrategy <|.. Dash
-    Player --> MovementStrategy : delegates movement
-    Player --> WeaponStrategy : delegates firing
-    PlayerBuilder <|-- CombatPlayerBuilder
-    PlayerBuilder <|-- TrainingPlayerBuilder
-    PlayerBuilder --> AbstractFactory : constructs loadout
-    GameServer ..> CombatPlayerBuilder : spawns players
+Target `WeaponStrategy`; adaptee `LegacyLaserGun` with an incompatible API;
+adapter `LaserGunAdapter`. `WeaponFactory` maps `WeaponType.LASER` to
+`new LaserGunAdapter(new LegacyLaserGun())`.
+
+| `WeaponStrategy` (target, 4 methods) | `LegacyLaserGun` (adaptee, 5 methods) | Adapter mapping |
+| --- | --- | --- |
+| `shootingDelay()` | `rechargeTimeMs()` (400) | `(int) rechargeTimeMs()` |
+| `bulletCount()` | – | constant 1 |
+| `bulletPrototype()` | `beamSpeed()` (18), `beamDamage()` (35) | `Bullet` built from both |
+| `fire(player, angle, ids)` | `chargeCapacitor()`, `isCharged()` | charge; if charged, return 1 bullet |
+
+## Command
+
+`Command { String execute(); String undo(); }`, receiver `Player`.
+
+| Command | `execute` | `undo` |
+| --- | --- | --- |
+| `MoveCommand` | saves x, y; `player.move(...)` | restores x, y |
+| `ShootCommand` | saves ammo, lastShot; fires into `out` | restores both; fired bullets get `alive = false` |
+| `SwitchWeaponCommand` | saves previous type + strategy; `setWeapon` | re-equips the saved pair |
+| `SwitchMovementCommand` | saves previous type + strategy; `setMovement` | re-equips the saved pair |
+
+`CommandInvoker` keeps a `Deque<Command>` capped at 100: `run` executes and pushes, `undo`
+pops and undoes. `GameFacade` gives every spawned player its own invoker. Each tick it
+runs the switch commands only when the requested value differs from the player's current
+one, a `MoveCommand` while a direction key is held, and a `ShootCommand` while the fire button is
+held and the weapon is ready. Running each command and then undoing it gave:
+
+```text
+  [start                     ] position=(200.0, 200.0) ammo=60 ... liveBullets=0
+  [run  MoveCommand          ] position=(203.2, 200.0) ammo=60 ... liveBullets=0
+  [undo                      ] position=(200.0, 200.0) ammo=60 ... liveBullets=0
+  [run  ShootCommand         ] position=(200.0, 200.0) ammo=59 ... liveBullets=1
+  [undo                      ] position=(200.0, 200.0) ammo=60 ... liveBullets=0
 ```
 
-## Observer sequence diagram
+## Facade
 
-`Player` is the subject. Observers register with `addObserver` and unsubscribe
-with `removeObserver`. State changes create typed `PlayerEvent` values. The
-server's `GameServer.Client` implements `PlayerObserver` and forwards events
-over WebSocket. `Game.onText` converts them to HUD notifications.
+Two facades simplify the client-server boundary, one per side. Neither side builds or splits
+protocol strings itself: both go through `facade.Protocol`, which holds every message format.
+
+### Server side: `GameFacade`
+
+`GameFacade(AbstractFactory, PlayerBuilder)` hides `World`, `WorldBuilder`, the factory and
+builder, per-player `CommandInvoker`s, bullets, loot and `Logger`:
+
+| Method | Does |
+| --- | --- |
+| `spawn(id, PlayerType, WeaponType)` | finds a free position, creates via the factory, equips via the builder |
+| `applyInput(id, PlayerInput, now)` | one tick of a player's held input, as commands; then loot pickup |
+| `tick(now)` | timed loot spawning, bullet movement and hits; returns ids killed this tick |
+| `stateMessage()` | the `STATE\|...` protocol line (encoded by `Protocol.state`) |
+| `remove(id)` | drops a player on death or disconnect |
+| `players()`, `hasPlayer(id)`, `worldSeed()` | read-only queries |
+
+**Clients (2):** `game.GameServer` (feeds it network input) and `game.BotController` (feeds it
+bot input). Both use the same methods.
+
+**Subsystems (5):** `game.World` (map, walls, loot), `abstractfactory.AbstractFactory`,
+`builder.PlayerBuilder`, `command.CommandInvoker` (one per player), and `singleton.Logger`; bullets are
+kept inside the facade.
+
+`GameServer` keeps only sockets and threads.
+
+### Client side: `ClientFacade`
+
+`new ClientFacade(host, port, listener)` hides the `WebSocketClient` transport (handshake, frames,
+reader thread) and `Protocol` decoding. The Swing `Game` calls a few methods and implements one
+listener:
+
+| Call | Does |
+| --- | --- |
+| `connect()` / `close()` | opens or closes the WebSocket connection |
+| `spawn(PlayerType, WeaponType)` | sends `SPAWN\|TYPE\|WEAPON` |
+| `sendInput(PlayerInput)` | sends `INPUT\|...` |
+
+| `ClientFacade.Listener` callback | Message |
+| --- | --- |
+| `onWelcome(playerId, worldSeed)` | `WELCOME` |
+| `onSpawned()` / `onDied()` | `SPAWNED` / `DIED` |
+| `onEvent(PlayerEvent)` | `EVENT` |
+| `onState(GameState)` | `STATE`, decoded into `PlayerView`, `BulletView` and `Loot` records |
+| `onDisconnected()` | connection closed |
+
+`Game` no longer contains a single protocol string.
+
+### Training mode
+
+`java game.ServerMain --training [port]` builds the server facade with `TrainingFactory` +
+`TrainingPlayerBuilder` (players cannot die, plated armor, 999 ammo, logged shots) and starts a
+`BotController` with 2 bots. Without the flag it uses `CombatFactory` + `CombatPlayerBuilder` and no bots.
+
+The bots have the reserved ids -1 and -2 and are ordinary players inside the facade. Every tick each bot
+finds the closest living human, computes a breadth-first route over the map (rebuilt from the shared
+seed, like a client does), and walks toward it until it is 60 px away. If no human is connected they idle.
+Bots do not shoot.
+
+## Observer
+
+`PlayerSubject` declares `addObserver`, `removeObserver` and `notifyObservers(PlayerEvent)`;
+`Player` implements it. Observers register with `addObserver` and unsubscribe with
+`removeObserver`. State changes create typed `PlayerEvent` values; the server's
+`GameServer.Client` implements `PlayerObserver` and forwards them over WebSocket, and
+`ClientFacade` delivers them to `Game.onEvent` as HUD notifications.
 
 ```mermaid
 sequenceDiagram
     participant Server as GameServer
-    participant Subject as Player
+    participant Facade as GameFacade
+    participant Subject as Player (PlayerSubject)
     participant Observer as Client (PlayerObserver)
     participant Socket as WebSocketServer
-    participant HUD as Game client
-    Server->>Subject: addObserver(client) during spawn
-    Server->>Subject: damage(bullet.damage)
-    Subject->>Subject: reduce health
+    participant CF as ClientFacade
+    participant HUD as Game (UI)
+    Server->>Facade: spawn(id, type, weapon)
+    Facade-->>Server: Player
+    Server->>Subject: addObserver(client)
+    Server->>Facade: tick(now)
+    Facade->>Subject: damage(bullet.effectiveDamage())
+    Subject->>Subject: armor.absorb(amount), reduce health
+    Subject->>Subject: notifyObservers(DAMAGED event)
     Subject->>Observer: onPlayerEvent(DAMAGED, actual damage)
     Observer->>Socket: sendText(EVENT|DAMAGED|amount)
-    Socket-->>HUD: onText(EVENT|DAMAGED|amount)
+    Socket-->>CF: onText(EVENT|DAMAGED|amount)
+    CF->>HUD: onEvent(DAMAGED)
     HUD->>HUD: show hit notification
     opt health reaches zero
         Subject->>Observer: onPlayerEvent(DIED, 0)
         Observer->>Socket: sendText(EVENT|DIED|0)
-        Socket-->>HUD: onText(EVENT|DIED|0)
+        Socket-->>CF: onText(EVENT|DIED|0)
+        CF->>HUD: onEvent(DIED)
         HUD->>HUD: show death notification
-        Server->>Server: remove dead body
+        Facade->>Facade: remove(player)
+        Facade-->>Server: killed ids
         Server->>Observer: send(DIED)
         Observer->>Socket: sendText(DIED)
-        Socket-->>HUD: onText(DIED)
+        Socket-->>CF: onText(DIED)
+        CF->>HUD: onDied()
         HUD->>HUD: show respawn screen
     end
 ```
 
-Damage events precede death events. The separate `DIED` protocol message controls
-the respawn screen. Loot, health pickup, and empty ammo also publish events.
-The observer list is a `CopyOnWriteArrayList`, and callbacks run synchronously
-on the publisher's thread. The demo shows two subscribers receiving the same
-events, then removes one and verifies it receives no subsequent pickup event.
+Damage events precede death events. The separate `DIED` protocol message controls the
+respawn screen. Loot, health pickup, and empty ammo also publish events. The observer list
+is a `CopyOnWriteArrayList`, and callbacks run synchronously on the publisher's thread.
 
-## Demonstration and verification
+## Class diagram
 
-From the project directory in PowerShell:
-
-```powershell
-$sources = @(Get-ChildItem *.java | ForEach-Object FullName) + @(Get-ChildItem tests/*.java | ForEach-Object FullName)
-javac --release 17 -d out/tests $sources
-java -cp out/tests DesignPatternsDemo
-java '-Djava.awt.headless=true' -cp out/tests PlayerFactoryTest
-java '-Djava.awt.headless=true' -cp out/tests GameplayTest
-java '-Djava.awt.headless=true' -cp out/tests DesignPatternsTest
-java '-Djava.awt.headless=true' -cp out/tests LootTest
-java '-Djava.awt.headless=true' -cp out/tests MovementStrategyTest
+```mermaid
+classDiagram
+    AbstractFactory <|-- CombatFactory
+    AbstractFactory <|-- TrainingFactory
+    HeavyPlayer <|-- CombatHeavyPlayer
+    HeavyPlayer <|-- TrainingHeavyPlayer
+    NormalPlayer <|-- CombatNormalPlayer
+    NormalPlayer <|-- TrainingNormalPlayer
+    LightPlayer <|-- CombatLightPlayer
+    LightPlayer <|-- TrainingLightPlayer
+    Player <|-- HeavyPlayer
+    Player <|-- NormalPlayer
+    Player <|-- LightPlayer
+    Player --> Armor : bridge
+    Armor <|.. NoArmor
+    Armor <|.. KevlarArmor
+    Armor <|.. PlatedArmor
+    PlayerSubject <|.. Player
+    Player --> MovementStrategy
+    Player --> WeaponStrategy
+    MovementStrategy <|.. Sneak
+    MovementStrategy <|.. Walk
+    MovementStrategy <|.. Sprint
+    MovementStrategy <|.. Dash
+    WeaponStrategy <|.. Pistol
+    WeaponStrategy <|.. AssaultRifle
+    WeaponStrategy <|.. Shotgun
+    WeaponStrategy <|.. LaserGunAdapter
+    LaserGunAdapter --> LegacyLaserGun
+    WeaponStrategy <|.. WeaponDecorator
+    WeaponDecorator o-- WeaponStrategy : wrappee
+    WeaponDecorator <|-- LoggingWeaponDecorator
+    WeaponDecorator <|-- RapidFireDecorator
+    WeaponDecorator <|-- DamageBoostDecorator
+    PlayerBuilder <|.. CombatPlayerBuilder
+    PlayerBuilder <|.. TrainingPlayerBuilder
+    Command <|.. MoveCommand
+    Command <|.. ShootCommand
+    Command <|.. SwitchWeaponCommand
+    Command <|.. SwitchMovementCommand
+    CommandInvoker o-- Command : history
+    GameFacade --> AbstractFactory
+    GameFacade --> PlayerBuilder
+    GameFacade --> CommandInvoker
+    GameServer --> GameFacade
+    BotController --> GameFacade
+    GameFacade --> Protocol
+    Game --> ClientFacade
+    ClientFacade --> Protocol
+    ClientFacade --> WebSocketClient
 ```
 
-The demo and all five test programs passed. Tests cover the three player stat
-sets, weapon cooldowns/projectile counts/spread/ammo, both builders and all nine
-class/weapon combinations, observer delivery/removal, movement normalization
-and wall collisions, dash timing boundaries and cooldown retention, keyboard
-priority, WebSocket movement selection, and legacy input compatibility.
+## Running it
 
-Selected demonstration output:
+Compile everything into one output directory (Git Bash, from the project directory):
 
-```text
-PlayerFactory: HeavyPlayer -> 120 HP, speed 2.56
-PlayerFactory: NormalPlayer -> 100 HP, speed 3.20
-PlayerFactory: LightPlayer -> 80 HP, speed 3.84
-AbstractFactory: CombatFactory -> NormalPlayer + AssaultRifle + Walk
-AbstractFactory: TrainingFactory -> LightPlayer + Pistol + Sneak
-Strategy: Sneak -> 1.60 units/tick
-Strategy: Walk -> 3.20 units/tick
-Strategy: Sprint -> 4.80 units/tick
-Strategy: Dash -> 9.60 units/tick
-PASS: Factory, Abstract Factory, four movement Strategies, Observer, two concrete PlayerBuilders
+```bash
+javac --release 17 -d out $(find . -name "*.java" -not -path "./out/*")
+java -cp out game.ServerMain --training   # or without the flag for combat mode
+java -cp out game.Main                    # one or more clients
 ```
+
+In training mode two bots (ids -1 and -2) walk toward the closest player around walls and stop next to it.
