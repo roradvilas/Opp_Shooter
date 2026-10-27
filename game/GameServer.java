@@ -2,7 +2,6 @@ package game;
 
 import abstractfactory.CombatFactory;
 import bridge.Player;
-import builder.CombatPlayerBuilder;
 import facade.GameFacade;
 import facade.PlayerInput;
 import facade.Protocol;
@@ -26,7 +25,7 @@ public class GameServer {
     private int nextPlayerId = 1;
 
     public GameServer(int port) {
-        this(port, new GameFacade(new CombatFactory(), new CombatPlayerBuilder()));
+        this(port, new GameFacade(new CombatFactory()));
     }
 
     public GameServer(int port, GameFacade game) {
@@ -117,7 +116,7 @@ public class GameServer {
         Protocol.SpawnRequest request = Protocol.parseSpawn(msg);
         if (request != null) {
             if (game.hasPlayer(client.id)) return;
-            Player player = game.spawn(client.id, request.type(), request.weapon());
+            Player player = game.spawn(client.id, request.type(), request.weapon(), request.armor());
             player.addObserver(client);
             client.input = PlayerInput.idle(player.x + 100, player.y);
             client.send(Protocol.SPAWNED);

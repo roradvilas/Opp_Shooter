@@ -1,7 +1,9 @@
 package command;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
+import java.util.List;
 import java.util.Objects;
 
 /** Invoker: runs commands and remembers the most recent {@value #CAPACITY} so they can be undone. */
@@ -23,5 +25,18 @@ public final class CommandInvoker {
         return command == null ? null : command.undo();
     }
 
-    public synchronized int historySize() { return history.size(); }
+    /**
+     * Undoes up to {@code count} of the most recent commands, newest first, and returns what each undo
+     * reported. Fewer are undone when the history is shorter.
+     */
+    public synchronized List<String> undo(int count) {
+        if (count < 0) throw new IllegalArgumentException("Undo count cannot be negative");
+        List<String> undone = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            String result = undo();
+            if (result == null) break;
+            undone.add(result);
+        }
+        return undone;
+    }
 }

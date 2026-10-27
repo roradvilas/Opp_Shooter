@@ -1,5 +1,6 @@
 package game;
 
+import bridge.ArmorType;
 import bridge.Player;
 import bridge.PlayerType;
 import facade.GameFacade;
@@ -38,7 +39,7 @@ public final class BotController {
         this.game = game;
         for (int i = 1; i <= count; i++) botIds.add(-i);
 
-        World world = new WorldBuilder().seed(game.worldSeed()).build();
+        World world = new WorldGenerator().seed(game.worldSeed()).generate();
         cols = world.getWidth() / World.TILE;
         rows = world.getHeight() / World.TILE;
         open = new boolean[rows][cols];
@@ -52,7 +53,7 @@ public final class BotController {
         PlayerType[] types = PlayerType.values();
         for (int i = 0; i < botIds.size(); i++) {
             int id = botIds.get(i);
-            if (!game.hasPlayer(id)) game.spawn(id, types[i % types.length], WeaponType.ASSAULT_RIFLE);
+            if (!game.hasPlayer(id)) game.spawn(id, types[i % types.length], WeaponType.ASSAULT_RIFLE, ArmorType.PLATED);
         }
 
         List<Player> all = game.players();
@@ -105,7 +106,7 @@ public final class BotController {
         double dx = goalX - bot.x, dy = goalY - bot.y;
         return new PlayerInput(moving && dy < -DEAD_ZONE, moving && dy > DEAD_ZONE,
                 moving && dx < -DEAD_ZONE, moving && dx > DEAD_ZONE,
-                false, target.x, target.y, MovementType.WALK, null);
+                false, target.x, target.y, MovementType.WALK);
     }
 
     /** Breadth-first walking distance, in tiles, from every reachable tile to the given tile; -1 if unreachable. */

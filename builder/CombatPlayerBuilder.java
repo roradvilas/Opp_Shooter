@@ -1,6 +1,6 @@
 package builder;
 
-import bridge.KevlarArmor;
+import bridge.ArmorType;
 import bridge.Player;
 import factory.WeaponFactory;
 import strategy.MovementType;
@@ -19,7 +19,7 @@ public final class CombatPlayerBuilder implements PlayerBuilder {
         return this;
     }
 
-    @Override public PlayerBuilder addArmor() { player.setArmor(new KevlarArmor()); return this; }
+    @Override public PlayerBuilder addArmor(ArmorType type) { player.setArmor(type.create()); return this; }
 
     @Override public PlayerBuilder addMovement() { player.equipMovement(MovementType.WALK, new Walk()); return this; }
 

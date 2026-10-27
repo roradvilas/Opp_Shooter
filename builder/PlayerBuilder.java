@@ -1,5 +1,6 @@
 package builder;
 
+import bridge.ArmorType;
 import bridge.Player;
 import strategy.WeaponType;
 
@@ -10,7 +11,7 @@ import strategy.WeaponType;
 public interface PlayerBuilder {
     PlayerBuilder start(Player player);
     PlayerBuilder addWeapon(WeaponType type);
-    PlayerBuilder addArmor();
+    PlayerBuilder addArmor(ArmorType type);
     PlayerBuilder addMovement();
     PlayerBuilder addAmmo();
     /** Returns the finished player. */

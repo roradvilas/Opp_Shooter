@@ -1,5 +1,6 @@
 package facade;
 
+import bridge.ArmorType;
 import bridge.Player;
 import bridge.PlayerType;
 import game.Loot;
@@ -20,7 +21,7 @@ import java.util.Map;
  * server nor the client builds or splits protocol strings itself.
  *
  * <pre>
- * client to server: SPAWN|TYPE|WEAPON   INPUT|w|s|a|d|shoot|mouseX|mouseY|MOVEMENT
+ * client to server: SPAWN|TYPE|WEAPON|ARMOR   INPUT|w|s|a|d|shoot|mouseX|mouseY|MOVEMENT
  * server to client: WELCOME|id|seed   SPAWNED   DIED   EVENT|TYPE|amount
  *                   STATE|lastId|players|bullets|loot
  * </pre>
@@ -29,22 +30,23 @@ public final class Protocol {
     public static final String SPAWNED = "SPAWNED";
     public static final String DIED = "DIED";
 
-    public record SpawnRequest(PlayerType type, WeaponType weapon) {}
+    public record SpawnRequest(PlayerType type, WeaponType weapon, ArmorType armor) {}
 
     private Protocol() {}
 
-    public static String spawn(PlayerType type, WeaponType weapon) {
-        return "SPAWN|" + type.name() + "|" + weapon.name();
+    public static String spawn(PlayerType type, WeaponType weapon, ArmorType armor) {
+        return "SPAWN|" + type.name() + "|" + weapon.name() + "|" + armor.name();
     }
 
     /** Null if the message is not a well-formed SPAWN (or legacy JOIN) request. */
     public static SpawnRequest parseSpawn(String msg) {
         String[] p = msg.split("\\|", -1);
         if (!p[0].equals("SPAWN") && !p[0].equals("JOIN")) return null;
-        if (p.length != 2 && p.length != 3) return null;
+        if (p.length < 2 || p.length > 4) return null;
         try {
             return new SpawnRequest(PlayerType.valueOf(p[1]),
-                    p.length == 3 ? WeaponType.valueOf(p[2]) : WeaponType.ASSAULT_RIFLE);
+                    p.length >= 3 ? WeaponType.valueOf(p[2]) : WeaponType.ASSAULT_RIFLE,
+                    p.length == 4 ? ArmorType.valueOf(p[3]) : ArmorType.KEVLAR);
         } catch (IllegalArgumentException e) {
             return null;
         }
@@ -64,7 +66,7 @@ public final class Protocol {
             MovementType mode = p.length == 9 ? MovementType.valueOf(p[8]) : MovementType.WALK;
             if (!Double.isFinite(x) || !Double.isFinite(y)) return null;
             return new PlayerInput(p[1].equals("1"), p[2].equals("1"), p[3].equals("1"),
-                    p[4].equals("1"), p[5].equals("1"), x, y, mode, null);
+                    p[4].equals("1"), p[5].equals("1"), x, y, mode);
         } catch (IllegalArgumentException e) {
             return null;
         }
@@ -89,7 +91,9 @@ public final class Protocol {
              .append(Math.round(p.y)).append(',').append(p.health).append(',')
              .append(p.ammo).append(',').append(p.loot).append(',')
              .append(p.type.name()).append(',').append(p.maxHealth).append(',')
-             .append(p.angle).append(',').append(p.weaponType.name());
+             .append(p.angle).append(',').append(p.weaponType.name()).append(',')
+             .append(p.getArmor().type().name()).append(',').append(p.getArmor().durability()).append(',')
+             .append(p.getArmor().maxDurability());
         }
 
         s.append("|");
@@ -127,7 +131,10 @@ public final class Protocol {
                             p.length >= 8 ? PlayerType.valueOf(p[6]) : PlayerType.NORMAL,
                             p.length >= 8 ? Integer.parseInt(p[7]) : 100,
                             p.length >= 10 ? Double.parseDouble(p[8]) : 0,
-                            p.length >= 10 ? WeaponType.valueOf(p[9]) : WeaponType.ASSAULT_RIFLE));
+                            p.length >= 10 ? WeaponType.valueOf(p[9]) : WeaponType.ASSAULT_RIFLE,
+                            p.length >= 13 ? ArmorType.valueOf(p[10]) : ArmorType.NONE,
+                            p.length >= 13 ? Integer.parseInt(p[11]) : 0,
+                            p.length >= 13 ? Integer.parseInt(p[12]) : 0));
                 }
             }
 

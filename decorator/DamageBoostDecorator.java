@@ -14,7 +14,7 @@ public final class DamageBoostDecorator extends WeaponDecorator {
 
     @Override public List<Bullet> fire(Player player, double angle, LongSupplier bulletIds) {
         List<Bullet> bullets = super.fire(player, angle, bulletIds);
-        for (Bullet bullet : bullets) bullet.damage += BONUS;
+        for (Bullet bullet : bullets) bullet.modifiers().setDamageBonus(BONUS);
         return bullets;
     }
 }

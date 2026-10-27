@@ -6,7 +6,7 @@ import prototype.Bullet;
 import java.util.List;
 import java.util.function.LongSupplier;
 
-/** Weapon products control firing; MovementStrategy demonstrates the four movement algorithms. */
+/** Strategy: how one weapon fires (delay between shots, bullets per shot, bullet prototype). */
 public interface WeaponStrategy {
     int ASSAULT_RIFLE_DELAY = 130;
     int shootingDelay();

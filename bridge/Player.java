@@ -52,6 +52,15 @@ public class Player implements PlayerSubject {
     public Armor getArmor() { return armor; }
     public void setArmor(Armor armor) { this.armor = Objects.requireNonNull(armor); }
 
+    /**
+     * Refined-abstraction hook: how much of the armor's {@link Armor#speedPenalty()} this player class feels
+     * (1.0 = fully). Each subclass decides, so player class and armor vary independently.
+     */
+    protected double armorEncumbrance() { return 1.0; }
+
+    /** Base speed reduced by the worn armor, scaled by this class's encumbrance. */
+    public double effectiveSpeed() { return speed * (1 - armor.speedPenalty() * armorEncumbrance()); }
+
     public Player(int id, double x, double y) {
         this(id, x, y, PlayerType.NORMAL, 100, 3.2);
     }
@@ -75,7 +84,7 @@ public class Player implements PlayerSubject {
         double dy = (s ? 1 : 0) - (w ? 1 : 0);
         if (dx == 0 && dy == 0) return;
 
-        double movementSpeed = speed * movement.speedMultiplier(this, now, true);
+        double movementSpeed = effectiveSpeed() * movement.speedMultiplier(this, now, true);
 
         double len = Math.sqrt(dx * dx + dy * dy);
         dx = dx / len * movementSpeed;
@@ -91,7 +100,6 @@ public class Player implements PlayerSubject {
 
     public MovementType getMovementType() { return movementType; }
     public MovementStrategy getMovement() { return movement; }
-    public WeaponStrategy getWeapon() { return weapon; }
     public void setMovement(MovementType type) {
         Objects.requireNonNull(type);
         if (movementType != type) equipMovement(type, type.createStrategy());
@@ -104,10 +112,6 @@ public class Player implements PlayerSubject {
 
     public boolean canShoot(long now) {
         return ammo >= weapon.bulletCount() && now - lastShot >= weapon.shootingDelay() && health > 0;
-    }
-
-    public void setWeapon(WeaponType type) {
-        equipWeapon(type, Objects.requireNonNull(type).createStrategy());
     }
 
     public void equipWeapon(WeaponType type, WeaponStrategy strategy) {
@@ -156,10 +160,13 @@ public class Player implements PlayerSubject {
 
     public void damage(int amount) {
         if (amount <= 0 || health <= 0) return;
-        amount = armor.absorb(amount);
+        boolean wasBroken = armor.isBroken();
+        int taken = armor.absorb(amount);
+        armor.onHit(amount);
         int previous = health;
-        health = Math.max(0, health - amount);
+        health = Math.max(0, health - taken);
         publish(PlayerEvent.Type.DAMAGED, previous - health);
+        if (!wasBroken && armor.isBroken()) publish(PlayerEvent.Type.ARMOR_BROKEN, 0);
         if (health == 0) publish(PlayerEvent.Type.DIED, 0);
     }
 }

@@ -12,12 +12,6 @@ public class World {
     private final ArrayList<Loot> loot;
     private final long seed;
 
-    public World() { this(new WorldBuilder().build()); }
-
-    private World(World generated) {
-        this(generated.width, generated.height, generated.walls, generated.loot, generated.seed);
-    }
-
     World(int width, int height, boolean[][] walls, ArrayList<Loot> loot, long seed) {
         this.width = width;
         this.height = height;

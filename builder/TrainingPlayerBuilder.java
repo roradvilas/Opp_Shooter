@@ -1,6 +1,6 @@
 package builder;
 
-import bridge.PlatedArmor;
+import bridge.ArmorType;
 import bridge.Player;
 import decorator.LoggingWeaponDecorator;
 import factory.WeaponFactory;
@@ -20,7 +20,7 @@ public final class TrainingPlayerBuilder implements PlayerBuilder {
         return this;
     }
 
-    @Override public PlayerBuilder addArmor() { player.setArmor(new PlatedArmor()); return this; }
+    @Override public PlayerBuilder addArmor(ArmorType type) { player.setArmor(type.create()); return this; }
 
     @Override public PlayerBuilder addMovement() { player.equipMovement(MovementType.SNEAK, new Sneak()); return this; }
 

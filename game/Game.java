@@ -1,5 +1,6 @@
 package game;
 
+import bridge.ArmorType;
 import bridge.PlayerType;
 import facade.BulletView;
 import facade.ClientFacade;
@@ -23,7 +24,7 @@ public class Game extends JPanel implements Runnable, ClientFacade.Listener {
     private static final int SERVER_PORT = 8080;
 
     private final Input input = new Input();
-    private volatile World world = new WorldBuilder().build();
+    private volatile World world = new WorldGenerator().generate();
     private volatile String notification = "";
     private volatile long notificationUntil;
     private volatile Map<Integer, PlayerView> players = Map.of();
@@ -38,6 +39,7 @@ public class Game extends JPanel implements Runnable, ClientFacade.Listener {
     private final JLabel spawnTitle = new JLabel("READY TO PLAY", SwingConstants.CENTER);
     private final JComboBox<PlayerType> classSelection = new JComboBox<>(PlayerType.values());
     private final JComboBox<WeaponType> weaponSelection = new JComboBox<>(WeaponType.values());
+    private final JComboBox<ArmorType> armorSelection = new JComboBox<>(ArmorType.values());
     private final JButton spawnButton = new JButton("Spawn");
     private volatile boolean alive;
     private volatile boolean spawnPending;
@@ -62,20 +64,24 @@ public class Game extends JPanel implements Runnable, ClientFacade.Listener {
         spawnScreen.setBounds(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
         spawnTitle.setForeground(Color.WHITE);
         spawnTitle.setFont(new Font("Arial", Font.BOLD, 48));
-        spawnTitle.setBounds(160, 140, 640, 70);
+        spawnTitle.setBounds(160, 90, 640, 70);
         spawnScreen.add(spawnTitle);
-        addSelectionLabel("Player class", 235);
-        classSelection.setBounds(310, 265, 340, 35);
+        addSelectionLabel("Player class", 175);
+        classSelection.setBounds(280, 205, 400, 35);
         classSelection.setSelectedItem(PlayerType.NORMAL);
         spawnScreen.add(classSelection);
-        addSelectionLabel("Weapon", 315);
-        weaponSelection.setBounds(310, 345, 340, 35);
+        addSelectionLabel("Weapon", 255);
+        weaponSelection.setBounds(280, 285, 400, 35);
         spawnScreen.add(weaponSelection);
+        addSelectionLabel("Armor", 335);
+        armorSelection.setBounds(280, 365, 400, 35);
+        armorSelection.setSelectedItem(ArmorType.KEVLAR);
+        spawnScreen.add(armorSelection);
         JLabel rates = new JLabel("Rifle: 100% rate | Pistol: 40% | Shotgun: 20%, 3 pellets", SwingConstants.CENTER);
         rates.setForeground(Color.LIGHT_GRAY);
-        rates.setBounds(180, 390, 600, 30);
+        rates.setBounds(180, 410, 600, 30);
         spawnScreen.add(rates);
-        spawnButton.setBounds(380, 445, 200, 45);
+        spawnButton.setBounds(380, 465, 200, 45);
         spawnButton.setEnabled(false);
         spawnButton.addActionListener(e -> requestSpawn());
         spawnScreen.add(spawnButton);
@@ -85,7 +91,7 @@ public class Game extends JPanel implements Runnable, ClientFacade.Listener {
     private void addSelectionLabel(String text, int y) {
         JLabel label = new JLabel(text, SwingConstants.CENTER);
         label.setForeground(Color.WHITE);
-        label.setBounds(310, y, 340, 25);
+        label.setBounds(280, y, 400, 25);
         spawnScreen.add(label);
     }
 
@@ -97,7 +103,8 @@ public class Game extends JPanel implements Runnable, ClientFacade.Listener {
         try {
             PlayerType type = (PlayerType)classSelection.getSelectedItem();
             WeaponType weapon = (WeaponType)weaponSelection.getSelectedItem();
-            server.spawn(type, weapon);
+            ArmorType armor = (ArmorType)armorSelection.getSelectedItem();
+            server.spawn(type, weapon, armor);
         } catch (Exception e) {
             spawnPending = false;
             connectionStatus = "Spawn failed: " + e.getMessage();
@@ -147,13 +154,13 @@ public class Game extends JPanel implements Runnable, ClientFacade.Listener {
 
         try {
             server.sendInput(new PlayerInput(w, s, a, d, input.isMouseDown(),
-                    mouseWorldX, mouseWorldY, input.movementType(), null));
+                    mouseWorldX, mouseWorldY, input.movementType()));
         } catch (Exception ignored) {}
     }
 
     @Override public void onWelcome(int playerId, long worldSeed) {
         myId = playerId;
-        world = new WorldBuilder().seed(worldSeed).build();
+        world = new WorldGenerator().seed(worldSeed).generate();
         connectionStatus = "Connected";
         SwingUtilities.invokeLater(() -> spawnButton.setEnabled(true));
     }
@@ -268,6 +275,8 @@ public class Game extends JPanel implements Runnable, ClientFacade.Listener {
         g.setColor(Color.GREEN);
         g.fillRect(sx - 20, sy - 28, 40 * Math.max(0, p.hp()) / p.maxHealth(), 5);
 
+        if (p.armorMax() > 0) drawDurabilityBar(g, sx - 20, sy - 22, 40, 4, p);
+
         g.setColor(Color.WHITE);
         g.setFont(new Font("Arial", Font.BOLD, 12));
         String label = "P" + p.id() + " " + switch (p.type()) {
@@ -280,7 +289,7 @@ public class Game extends JPanel implements Runnable, ClientFacade.Listener {
 
     private void drawUI(Graphics2D g, PlayerView me) {
         g.setColor(new Color(0,0,0,175));
-        g.fillRect(15, 15, 300, 137);
+        g.fillRect(15, 15, 300, 162);
         g.setColor(Color.WHITE);
         g.setFont(new Font("Arial", Font.BOLD, 16));
 
@@ -290,6 +299,7 @@ public class Game extends JPanel implements Runnable, ClientFacade.Listener {
             g.drawString("Loot: " + me.loot(), 30, 90);
             g.drawString("Players: " + players.size(), 30, 115);
             g.drawString("Weapon: " + me.weapon(), 30, 140);
+            drawArmorHud(g, me);
         }
         g.setFont(new Font("Arial", Font.PLAIN, 13));
         g.drawString(connectionStatus, 700, 30);
@@ -300,8 +310,29 @@ public class Game extends JPanel implements Runnable, ClientFacade.Listener {
         if (System.currentTimeMillis() < notificationUntil) {
             g.setColor(new Color(240, 190, 60));
             g.setFont(new Font("Arial", Font.BOLD, 16));
-            g.drawString(notification, 30, 180);
+            g.drawString(notification, 30, 205);
         }
 
+    }
+
+    /** Armor name and durability for the local player: text plus a bar, or BROKEN once it is used up. */
+    private void drawArmorHud(Graphics2D g, PlayerView me) {
+        String name = me.armor().name().charAt(0) + me.armor().name().substring(1).toLowerCase();
+        if (me.armorMax() == 0) {
+            g.drawString("Armor: None", 30, 165);
+            return;
+        }
+        boolean broken = me.armorDurability() == 0;
+        g.drawString("Armor: " + name + (broken ? " (BROKEN)" : " " + me.armorDurability() + "/" + me.armorMax()), 30, 165);
+        drawDurabilityBar(g, 30, 170, 270, 4, me);
+        g.setColor(Color.WHITE);
+    }
+
+    private void drawDurabilityBar(Graphics2D g, int x, int y, int width, int height, PlayerView p) {
+        double fraction = (double)p.armorDurability() / p.armorMax();
+        g.setColor(new Color(40, 40, 50));
+        g.fillRect(x, y, width, height);
+        g.setColor(fraction > 0.5 ? new Color(90, 170, 255) : fraction > 0.25 ? new Color(240, 190, 60) : new Color(230, 90, 60));
+        g.fillRect(x, y, (int)Math.round(width * fraction), height);
     }
 }

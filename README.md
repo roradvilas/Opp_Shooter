@@ -15,7 +15,7 @@ javac --release 17 -d out $(find . -name "*.java" -not -path "./out/*")
 Start the server:
 ```bash
 java -cp out game.ServerMain                  # combat mode (default), port 8080
-java -cp out game.ServerMain --training       # training mode: players cannot die, plated armor, 999 ammo, logged shots, 2 bots
+java -cp out game.ServerMain --training       # training mode: players cannot die, 999 ammo, logged shots, random invalid-packet rollbacks, 2 bots
 java -cp out game.ServerMain --training 9000  # the flag and the port can be combined
 ```
 
@@ -26,14 +26,20 @@ java -cp out game.Main
 
 By default clients connect to `localhost:8080`.
 
-The client opens an in-game spawn screen with class and weapon selectors. Heavy has
+The client opens an in-game spawn screen with class, weapon and armor selectors (the same screen is
+shown again after death, so all three can be changed before respawning). Heavy has
 120 HP and 80% speed (2.56 per tick); Normal has 100 HP and 100% speed (3.2);
-Light has 80 HP and 120% speed (3.84). All have the same ammo and collision radius.
+Light has 80 HP and 120% speed (3.84). All have the same ammo and collision radius. Armor also slows
+its wearer: Kevlar costs 10% speed and Plated 25%, scaled by class (Heavy feels none of it, Normal all of it,
+Light 1.5 times it). Armor also has durability (Kevlar 80, Plated 120): every hit wears it down by the
+damage dealt, and once it reaches 0 the armor breaks and no longer protects or slows. The HUD shows
+"Armor: Kevlar 35/80" with a bar, and every player has a small durability bar above their health bar.
 The server constructs selected loadouts inside `GameFacade`: a concrete
-`AbstractFactory` (`CombatFactory` or `TrainingFactory`) creates the player and a
-`PlayerBuilder` (`CombatPlayerBuilder` or `TrainingPlayerBuilder`) equips it.
+`AbstractFactory` (`CombatFactory` or `TrainingFactory`) creates the player and uses a
+`PlayerBuilder` (`CombatPlayerBuilder` or `TrainingPlayerBuilder`) internally to equip it.
 
-In training mode two server-side bots always walk toward the closest player (routing around
+In training mode the server also randomly flags a move as an invalid packet and undoes the player's last 20 commands
+(the HUD shows "Invalid packet: undid last 20 commands"). Two server-side bots always walk toward the closest player (routing around
 walls) and stop next to them; they do not shoot.
 
 Move with WASD. Hold Ctrl to Sneak (50% of class speed), Shift to Sprint (150%),
@@ -94,13 +100,13 @@ Console messages use the singleton `Logger` via `Logger.getInstance().log(text)`
 
 Protocol:
 - client -> server: `INPUT|w|s|a|d|shoot|mouseWorldX|mouseWorldY|movement` (SNEAK, WALK, SPRINT, DASH; legacy messages without movement select WALK)
-- client -> server: `SPAWN|class|weapon` (accepted only when not alive)
-- server -> client: `STATE|highestSpawnedPlayerId|id,x,y,hp,ammo,loot,type,maxHealth,angle,weapon;...|bulletId,x,y;...|lootX,lootY,lootType;...`
+- client -> server: `SPAWN|class|weapon|armor` (accepted only when not alive; armor is NONE, KEVLAR or PLATED and defaults to KEVLAR when omitted)
+- server -> client: `STATE|highestSpawnedPlayerId|id,x,y,hp,ammo,loot,type,maxHealth,angle,weapon,armor,armorDurability,armorMax;...|bulletId,x,y;...|lootX,lootY,lootType;...`
 - server -> client: `WELCOME|playerId|mapSeed`
-- server -> client: `EVENT|type|amount` (DAMAGED, DIED, LOOT_COLLECTED, HEALTH_COLLECTED, AMMO_EMPTY, POWERUP)
+- server -> client: `EVENT|type|amount` (DAMAGED, DIED, LOOT_COLLECTED, HEALTH_COLLECTED, AMMO_EMPTY, POWERUP, ARMOR_BROKEN, UNDO_COMPLETED)
 - server -> client: `SPAWNED` or `DIED`
 
-For example: `SPAWN|LIGHT|SHOTGUN`. The server sends WELCOME on connection,
+For example: `SPAWN|LIGHT|SHOTGUN|PLATED`. The server sends WELCOME on connection,
 but does not create a body until a valid spawn request. Angles are in radians.
 
 This is intentionally a compact prototype rather than production netcode:
@@ -109,7 +115,8 @@ or lag compensation.
 
 ## Checks
 
-The repository contains no test or demo classes. To check a change, compile, start the server
+The only demo class is `prototype.PrototypeDemo` (shallow versus deep copy, see DESIGN_PATTERNS.md); there
+are no tests. To check a change, compile, start the server
 (`--training` is handy: nobody dies and the bots move on their own) and connect one or more clients with
 `game.Main`.
 
@@ -125,14 +132,12 @@ the final round publish `PlayerEvent` values. The server's client observer forwa
 events to the affected player over WebSocket; the HUD displays them for three seconds.
 Death also keeps the existing respawn screen behavior.
 
-`WorldBuilder` generates independent maps with configurable tile dimensions,
-seed, obstacle count, and loot placement attempts. Defaults keep the 60 by 40
-map, 55 obstacles, and no initial loot. Each server uses a time-based seed and
-sends it in WELCOME so clients reproduce the same walls. Example:
+`WorldGenerator` generates the 60 by 40 tile map with 55 obstacles and no initial loot
+(loot spawns over time). Each server uses a time-based seed and sends it in WELCOME so
+clients reproduce the same walls. Example:
 
 ```java
-World world = new WorldBuilder().size(60, 40).seed(7)
-        .obstacles(55).build();
+World world = new WorldGenerator().seed(7).generate();
 ```
 
 Each weapon owns a bullet Prototype. `Bullet.copy` preserves its speed and damage,

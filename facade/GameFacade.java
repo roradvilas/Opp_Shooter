@@ -1,17 +1,17 @@
 package facade;
 
 import abstractfactory.AbstractFactory;
+import bridge.ArmorType;
 import bridge.Player;
 import bridge.PlayerType;
-import builder.PlayerBuilder;
 import command.CommandInvoker;
 import command.MoveCommand;
 import command.ShootCommand;
 import command.SwitchMovementCommand;
-import command.SwitchWeaponCommand;
 import game.Loot;
 import game.World;
-import game.WorldBuilder;
+import game.WorldGenerator;
+import observer.PlayerEvent;
 import prototype.Bullet;
 import singleton.Logger;
 import strategy.WeaponType;
@@ -31,10 +31,12 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class GameFacade {
     private static final long LOOT_SPAWN_INTERVAL = 5000;
+    /** How many of a player's most recent commands are undone when a packet is flagged as invalid. */
+    private static final int INVALID_PACKET_UNDO_COUNT = 20;
 
     private final AbstractFactory factory;
-    private final PlayerBuilder builder;
-    private final World world = new WorldBuilder().build();
+    private final double invalidMoveChance;
+    private final World world = new WorldGenerator().generate();
     private final Map<Integer, Player> players = new ConcurrentHashMap<>();
     private final Map<Integer, CommandInvoker> invokers = new ConcurrentHashMap<>();
     private final List<Bullet> bullets = Collections.synchronizedList(new ArrayList<>());
@@ -43,30 +45,40 @@ public final class GameFacade {
     private long nextLootSpawnAt = -1;
     private int lastSpawnedId;
 
-    public GameFacade(AbstractFactory factory, PlayerBuilder builder) {
+    public GameFacade(AbstractFactory factory) {
+        this(factory, 0);
+    }
+
+    /**
+     * @param invalidMoveChance chance per executed move that it is flagged as an invalid packet and the player's
+     *                          last {@value #INVALID_PACKET_UNDO_COUNT} commands are undone (0 disables it;
+     *                          training mode uses it to exercise the undo command)
+     */
+    public GameFacade(AbstractFactory factory, double invalidMoveChance) {
+        if (invalidMoveChance < 0 || invalidMoveChance > 1)
+            throw new IllegalArgumentException("Invalid move chance must be between 0 and 1");
         this.factory = Objects.requireNonNull(factory);
-        this.builder = Objects.requireNonNull(builder);
+        this.invalidMoveChance = invalidMoveChance;
     }
 
     public long worldSeed() { return world.getSeed(); }
 
     public synchronized boolean hasPlayer(int id) { return players.containsKey(id); }
 
-    /** Creates a player of the given class at a free random position and equips it through the builder. */
-    public synchronized Player spawn(int id, PlayerType type, WeaponType weapon) {
-        Player candidate;
+    /** Creates a player of the given class at a free random position; the factory builds and equips it. */
+    public synchronized Player spawn(int id, PlayerType type, WeaponType weapon, ArmorType armor) {
+        Player player;
         for (;;) {
             double x = 80 + random.nextInt(world.getWidth() - 160);
             double y = 80 + random.nextInt(world.getHeight() - 160);
-            candidate = factory.create(type, id, x, y);
-            if (!world.collidesWithWall(x, y, candidate.radius)) break;
+            player = factory.create(type, id, x, y, weapon, armor);
+            if (!world.collidesWithWall(x, y, player.radius)) break;
         }
-        Player player = builder.start(candidate).addWeapon(weapon).addArmor().addMovement().addAmmo().build();
         players.put(id, player);
         invokers.put(id, new CommandInvoker());
         lastSpawnedId = Math.max(lastSpawnedId, id);
         Logger.getInstance().log("Player " + id + " spawned as " + player.getClass().getSimpleName()
-                + " with " + player.weaponType);
+                + " with " + player.weaponType + " and " + armor);
         return player;
     }
 
@@ -77,10 +89,10 @@ public final class GameFacade {
         if (p == null || p.health <= 0) return;
 
         if (input.movement() != p.getMovementType()) invoker.run(new SwitchMovementCommand(p, input.movement()));
-        if (input.weapon() != null && input.weapon() != p.weaponType)
-            invoker.run(new SwitchWeaponCommand(p, input.weapon()));
-        if (input.w() || input.s() || input.a() || input.d())
+        if (input.w() || input.s() || input.a() || input.d()) {
             invoker.run(new MoveCommand(p, input.w(), input.s(), input.a(), input.d(), world, now));
+            if (invalidMoveChance > 0 && random.nextDouble() < invalidMoveChance) rejectMove(p, invoker);
+        }
         p.aim(input.mouseX(), input.mouseY());
         if (input.shoot() && p.canShoot(now))
             invoker.run(new ShootCommand(p, () -> nextBulletId++, input.mouseX(), input.mouseY(), now, bullets));
@@ -137,6 +149,13 @@ public final class GameFacade {
         List<Loot> lootSnapshot;
         synchronized (world.getLoot()) { lootSnapshot = new ArrayList<>(world.getLoot()); }
         return Protocol.state(lastSpawnedId, players.values(), bulletSnapshot, lootSnapshot);
+    }
+
+    /** The move just run is flagged as an invalid packet: roll back recent commands and tell the observers why. */
+    private void rejectMove(Player p, CommandInvoker invoker) {
+        List<String> undone = invoker.undo(INVALID_PACKET_UNDO_COUNT);
+        Logger.getInstance().log("Invalid packet from player " + p.id + ": undid " + undone.size() + " command(s)");
+        p.notifyObservers(new PlayerEvent(p.id, PlayerEvent.Type.UNDO_COMPLETED, undone.size()));
     }
 
     private void collectLoot(Player p) {

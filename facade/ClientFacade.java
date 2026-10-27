@@ -1,5 +1,6 @@
 package facade;
 
+import bridge.ArmorType;
 import bridge.PlayerType;
 import game.WebSocketClient;
 import observer.PlayerEvent;
@@ -43,8 +44,8 @@ public final class ClientFacade {
     /** The id the server assigned, or -1 before the WELCOME message arrives. */
     public int playerId() { return playerId; }
 
-    public void spawn(PlayerType type, WeaponType weapon) throws IOException {
-        socket.sendText(Protocol.spawn(type, weapon));
+    public void spawn(PlayerType type, WeaponType weapon, ArmorType armor) throws IOException {
+        socket.sendText(Protocol.spawn(type, weapon, armor));
     }
 
     public void sendInput(PlayerInput input) throws IOException {
