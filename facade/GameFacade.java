@@ -133,9 +133,13 @@ public final class GameFacade {
         return killed;
     }
 
-    /** Removes a player (disconnect or death). Unknown ids are ignored. */
+    /** Removes a player (disconnect or death), unsubscribing observers first. Unknown ids are ignored. */
     public synchronized void remove(int id) {
-        players.remove(id);
+        Player player = players.get(id);
+        if (player != null) {
+            player.removeAllObservers();
+            players.remove(id);
+        }
         invokers.remove(id);
     }
 

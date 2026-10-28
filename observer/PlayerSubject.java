@@ -4,5 +4,7 @@ package observer;
 public interface PlayerSubject {
     void addObserver(PlayerObserver observer);
     void removeObserver(PlayerObserver observer);
+    /** Unsubscribes every observer before this subject is removed. */
+    void removeAllObservers();
     void notifyObservers(PlayerEvent event);
 }

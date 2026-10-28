@@ -40,6 +40,10 @@ public class Player implements PlayerSubject {
 
     @Override public void addObserver(PlayerObserver observer) { observers.add(Objects.requireNonNull(observer)); }
     @Override public void removeObserver(PlayerObserver observer) { observers.remove(observer); }
+    /** Removes each registered observer through the normal unsubscribe operation. */
+    @Override public void removeAllObservers() {
+        for (PlayerObserver observer : observers) removeObserver(observer);
+    }
 
     @Override public void notifyObservers(PlayerEvent event) {
         for (PlayerObserver observer : observers) observer.onPlayerEvent(event);
