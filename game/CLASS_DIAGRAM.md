@@ -81,7 +81,7 @@ classDiagram
     GameServer --> WebSocketServer : serves connections
     GameServer --> Protocol : parses and encodes messages
     GameServer *-- ServerClient : connection handlers
-    GameServer o--> BotController : optional bots
+    GameServer --> BotController : optional bots
     ServerClient --> WebSocketServer : reads and sends frames
     ServerClient ..|> PlayerObserver : observes player
     ServerClient --> PlayerInput : stores latest input
@@ -98,7 +98,7 @@ classDiagram
     BotController ..> MovementType : selects bot movement
 
     WorldGenerator ..> World : creates
-    World o--> Loot : pickups
+    World --> Loot : pickups
     Loot --> LootType : pickup type
     GameFacade --> AbstractFactory : creates players
     AbstractFactory <|-- CombatFactory

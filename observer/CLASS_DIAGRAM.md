@@ -2,6 +2,7 @@
 
 `Player` publishes typed events to registered observers. The server's per-connection client
 observes each spawned player and forwards those events to the remote UI.
+See the [Observer sequence diagram](SEQUENCE_DIAGRAM.md) for the registration and event-delivery flow.
 
 ```mermaid
 classDiagram

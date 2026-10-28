@@ -339,46 +339,10 @@ Bots do not shoot.
 `GameServer.Client` implements `PlayerObserver` and forwards them over WebSocket, and
 `ClientFacade` delivers them to `Game.onEvent` as HUD notifications.
 
-```mermaid
-sequenceDiagram
-    participant Server as GameServer
-    participant Facade as GameFacade
-    participant Subject as Player (PlayerSubject)
-    participant Observer as Client (PlayerObserver)
-    participant Socket as WebSocketServer
-    participant CF as ClientFacade
-    participant HUD as Game (UI)
-    Server->>Facade: spawn(id, type, weapon, armor)
-    Facade-->>Server: Player
-    Server->>Subject: addObserver(client)
-    Server->>Facade: tick(now)
-    Facade->>Subject: damage(bullet.effectiveDamage())
-    Subject->>Subject: armor.absorb(amount), reduce health
-    Subject->>Subject: notifyObservers(DAMAGED event)
-    Subject->>Observer: onPlayerEvent(DAMAGED, actual damage)
-    Observer->>Socket: sendText(EVENT|DAMAGED|amount)
-    Socket-->>CF: onText(EVENT|DAMAGED|amount)
-    CF->>HUD: onEvent(DAMAGED)
-    HUD->>HUD: show hit notification
-    opt health reaches zero
-        Subject->>Observer: onPlayerEvent(DIED, 0)
-        Observer->>Socket: sendText(EVENT|DIED|0)
-        Socket-->>CF: onText(EVENT|DIED|0)
-        CF->>HUD: onEvent(DIED)
-        HUD->>HUD: show death notification
-        Facade->>Facade: remove(player)
-        Facade-->>Server: killed ids
-        Server->>Observer: send(DIED)
-        Observer->>Socket: sendText(DIED)
-        Socket-->>CF: onText(DIED)
-        CF->>HUD: onDied()
-        HUD->>HUD: show respawn screen
-    end
-```
-
-Damage events precede death events. The separate `DIED` protocol message controls the
-respawn screen. Loot, health pickup, and empty ammo also publish events. The observer list
-is a `CopyOnWriteArrayList`, and callbacks run synchronously on the publisher's thread.
+See the [Observer sequence diagram](observer/SEQUENCE_DIAGRAM.md) for the registration, synchronous
+event delivery, and client notification flow. Damage events precede death events. The separate
+`DIED` protocol message controls the respawn screen. The observer list is a
+`CopyOnWriteArrayList`, and callbacks run synchronously on the publisher's thread.
 
 ## Class diagram
 

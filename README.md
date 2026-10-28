@@ -124,7 +124,7 @@ are no tests. To check a change, compile, start the server
 
 Each pattern has its own package (`singleton`, `factory`, `abstractfactory`, `strategy`, `observer`, `builder`, `prototype`, `decorator`, `command`, `adapter`, `facade`, `bridge`); everything else is in `game`. See [DESIGN_PATTERNS.md](DESIGN_PATTERNS.md) for the requirement mapping, concrete
 factory families, builders, Bridge/Decorator/Adapter/Command/Facade/Prototype
-details, the Observer sequence diagram, and captured example output.
+details, the [Observer sequence diagram](observer/SEQUENCE_DIAGRAM.md), and captured example output.
 
 `Player` is the Observer subject: register a `PlayerObserver` with `addObserver`
 and unsubscribe with `removeObserver`. Damage, death, loot pickup, and consuming
